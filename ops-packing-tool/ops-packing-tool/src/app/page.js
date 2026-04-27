@@ -1,7 +1,28 @@
 'use client';
+
 import { useState } from 'react';
 
 const SLOTS = ['delivery-log', 'serviceware', 'add-ons', 'beverages', 'coffee', 'alcohol'];
+
+const CATEGORY_ORDER = ['serviceware', 'add-ons', 'beverages', 'coffee', 'alcohol'];
+
+const LABELS = {
+  'delivery-log': 'Delivery Log',
+  serviceware: 'Serviceware',
+  'add-ons': 'Add-ons',
+  beverages: 'Beverages',
+  coffee: 'Coffee',
+  alcohol: 'Alcohol',
+};
+
+const SLOT_HELP = {
+  'delivery-log': 'OPS Print Delivery Log',
+  serviceware: 'OPS Serviceware',
+  'add-ons': 'KITCHEN/OPS Add-on',
+  beverages: 'KITCHEN/OPS Beverages',
+  coffee: 'KITCHEN/OPS Coffee',
+  alcohol: 'KITCHEN/OPS Alcohol',
+};
 
 const ICONS = {
   'delivery-log': '🚚',
@@ -12,34 +33,13 @@ const ICONS = {
   alcohol: '🍷',
 };
 
-const LABELS = {
-  'delivery-log': 'Delivery Log',
-  serviceware: 'Serviceware',
-  'add-ons': 'Add-ons',
-  alcohol: 'Alcohol',
-  beverages: 'Beverages',
-  coffee: 'Coffee',
+const CATEGORY_COLORS = {
+  serviceware: { bg: '#E6F1FB', text: '#185FA5' },
+  'add-ons': { bg: '#EEEDFE', text: '#534AB7' },
+  beverages: { bg: '#EAF3DE', text: '#3B6D11' },
+  coffee: { bg: '#FAECE7', text: '#993C1D' },
+  alcohol: { bg: '#FAEEDA', text: '#854F0B' },
 };
-
-const DARK_STYLES = {
-  'delivery-log': { bg: '#102c2f', color: '#4EA99B' },
-  serviceware: { bg: '#1a2e4a', color: '#7ab8e8' },
-  'add-ons': { bg: '#1e1a3a', color: '#a09bec' },
-  alcohol: { bg: '#2e2010', color: '#d4a055' },
-  beverages: { bg: '#132510', color: '#7ab85a' },
-  coffee: { bg: '#2a1510', color: '#d48060' },
-};
-
-const PRINT_STYLES = {
-  'delivery-log': { bg: '#E0F5F1', color: '#1B6B5A' },
-  serviceware: { bg: '#E6F1FB', color: '#185FA5' },
-  'add-ons': { bg: '#EEEDFE', color: '#534AB7' },
-  alcohol: { bg: '#FAEEDA', color: '#854F0B' },
-  beverages: { bg: '#EAF3DE', color: '#3B6D11' },
-  coffee: { bg: '#FAECE7', color: '#993C1D' },
-};
-
-const CATEGORY_ORDER = ['serviceware', 'add-ons', 'beverages', 'coffee', 'alcohol'];
 
 function today() {
   return new Date().toLocaleDateString('en-US', {
@@ -50,74 +50,91 @@ function today() {
   });
 }
 
+function downloadDateName() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function shortFileName(name) {
+  if (!name) return '';
+  return name.length > 28 ? name.slice(0, 25) + '…' : name;
+}
+
+function hasItems(order, category) {
+  return Array.isArray(order?.categories?.[category]) && order.categories[category].length > 0;
+}
+
+function orderHasAnyItems(order) {
+  return CATEGORY_ORDER.some((category) => hasItems(order, category));
+}
+
 function DropSlot({ slot, file, state, onFile, onRemove }) {
-  const [drag, setDrag] = useState(false);
+  const [dragging, setDragging] = useState(false);
 
   function handleDrop(e) {
     e.preventDefault();
-    setDrag(false);
+    setDragging(false);
 
-    const f = e.dataTransfer.files[0];
-    if (f && f.type === 'application/pdf') {
-      onFile(slot, f);
+    const droppedFile = e.dataTransfer.files?.[0];
+
+    if (droppedFile && droppedFile.type === 'application/pdf') {
+      onFile(slot, droppedFile);
     }
   }
 
-  const shortName = file
-    ? file.name.length > 20
-      ? file.name.slice(0, 17) + '…'
-      : file.name
-    : '';
-
   return (
     <div>
-      <div style={styles.slotLabel}>{LABELS[slot]}</div>
+      <div style={styles.slotTitle}>{LABELS[slot]}</div>
 
       <label
+        style={{
+          ...styles.dropBox,
+          ...(dragging ? styles.dropBoxDragging : {}),
+          ...(file ? styles.dropBoxLoaded : {}),
+          ...(state === 'processing' ? styles.dropBoxProcessing : {}),
+          ...(state === 'done' ? styles.dropBoxDone : {}),
+        }}
         onDragOver={(e) => {
           e.preventDefault();
-          setDrag(true);
+          setDragging(true);
         }}
-        onDragLeave={() => setDrag(false)}
+        onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
-        style={{
-          ...styles.dropTarget,
-          ...(drag ? styles.dropTargetDrag : {}),
-          ...(file ? styles.dropTargetLoaded : {}),
-          ...(state === 'processing' ? styles.dropTargetProcessing : {}),
-          ...(state === 'done' ? styles.dropTargetDone : {}),
-        }}
       >
         <input
           type="file"
           accept=".pdf"
           style={{ display: 'none' }}
           onChange={(e) => {
-            const f = e.target.files[0];
-            if (f) onFile(slot, f);
+            const selectedFile = e.target.files?.[0];
+
+            if (selectedFile) {
+              onFile(slot, selectedFile);
+            }
+
             e.target.value = '';
           }}
         />
 
         {!file && (
           <>
-            <span style={{ fontSize: 24 }}>{ICONS[slot]}</span>
-            <span style={styles.slotHint}>Drop or click</span>
+            <div style={styles.dropIcon}>{ICONS[slot]}</div>
+            <div style={styles.dropMainText}>Click or drag & drop</div>
+            <div style={styles.dropSubText}>{SLOT_HELP[slot]}</div>
           </>
         )}
 
         {file && state !== 'processing' && state !== 'done' && (
-          <div style={styles.fileLoadedInner}>
-            <div style={styles.fileCheck}>✓</div>
-            <div style={styles.fileLoadedName}>{shortName}</div>
+          <div style={styles.loadedWrap}>
+            <div style={styles.loadedCheck}>✓</div>
+            <div style={styles.loadedName}>{shortFileName(file.name)}</div>
             <button
               type="button"
+              style={styles.removeBtn}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 onRemove(slot);
               }}
-              style={styles.fileRemove}
             >
               Remove
             </button>
@@ -125,22 +142,156 @@ function DropSlot({ slot, file, state, onFile, onRemove }) {
         )}
 
         {file && state === 'processing' && (
-          <div style={styles.fileLoadedInner}>
-            <div style={{ ...styles.fileCheck, background: '#1e3545', fontSize: 14 }}>⏳</div>
-            <div style={{ ...styles.fileLoadedName, color: '#6a8a9a' }}>Reading…</div>
-            <div style={{ fontSize: 10, color: '#3a5a6a' }}>{shortName}</div>
+          <div style={styles.loadedWrap}>
+            <div style={{ ...styles.loadedCheck, background: '#1b5360' }}>⏳</div>
+            <div style={styles.loadedName}>Reading report…</div>
+            <div style={styles.dropSubText}>{shortFileName(file.name)}</div>
           </div>
         )}
 
         {file && state === 'done' && (
-          <div style={styles.fileLoadedInner}>
-            <div style={{ ...styles.fileCheck, background: '#1B6B5A' }}>✓</div>
-            <div style={styles.fileLoadedName}>Done</div>
+          <div style={styles.loadedWrap}>
+            <div style={styles.loadedCheck}>✓</div>
+            <div style={styles.loadedName}>Report loaded</div>
+            <button
+              type="button"
+              style={styles.removeBtn}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onRemove(slot);
+              }}
+            >
+              Remove
+            </button>
           </div>
         )}
       </label>
     </div>
   );
+}
+
+function Header({ date }) {
+  return (
+    <>
+      <header style={styles.header}>
+        <div style={styles.headerInner}>
+          <div style={styles.logoBox}>
+            <div style={styles.logoText}>BI-RITE</div>
+            <div style={styles.logoSubText}>EAT GOOD FOOD</div>
+          </div>
+
+          <div style={styles.headerDivider} />
+
+          <div>
+            <div style={styles.appTitle}>Ops Bag Packing Tool</div>
+            <div style={styles.appSubtitle}>OPERATIONS TOOL</div>
+          </div>
+
+          <div style={styles.headerDate}>{date}</div>
+        </div>
+      </header>
+
+      <div style={styles.stepBar}>
+        <div style={styles.stepInner}>
+          <Step active number="1" label="Upload Reports" />
+          <div style={styles.stepLine} />
+          <Step number="2" label="Review Details" />
+          <div style={styles.stepLine} />
+          <Step number="3" label="Generate Packing Sheet" />
+        </div>
+      </div>
+    </>
+  );
+}
+
+function Step({ number, label, active }) {
+  return (
+    <div style={styles.stepItem}>
+      <div style={{ ...styles.stepCircle, ...(active ? styles.stepCircleActive : {}) }}>{number}</div>
+      <div style={{ ...styles.stepLabel, ...(active ? styles.stepLabelActive : {}) }}>{label}</div>
+    </div>
+  );
+}
+
+function CategorySection({ category, items }) {
+  const safeItems = Array.isArray(items) ? items : [];
+
+  return (
+    <div style={styles.resultCategory}>
+      <div style={styles.resultCategoryTitleRow}>
+        <span
+          style={{
+            ...styles.resultCategoryBadge,
+            background: CATEGORY_COLORS[category].bg,
+            color: CATEGORY_COLORS[category].text,
+          }}
+        >
+          {LABELS[category]}
+        </span>
+
+        <span style={styles.sourceNote}>
+          Source: {LABELS[category]} report
+        </span>
+      </div>
+
+      {safeItems.length > 0 ? (
+        <div style={styles.resultItemList}>
+          {safeItems.map((item, index) => (
+            <div key={`${category}-${item.name}-${index}`} style={styles.resultItem}>
+              <span style={styles.checkBox} />
+              <span style={styles.itemQty}>{item.qty}</span>
+              <span style={styles.itemName}>{item.name}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={styles.noItems}>No {LABELS[category].toLowerCase()}</div>
+      )}
+    </div>
+  );
+}
+
+function PrintableCategoryHtml(category, items) {
+  const safeItems = Array.isArray(items) ? items : [];
+  const color = CATEGORY_COLORS[category];
+
+  if (safeItems.length === 0) {
+    return `
+      <div class="print-category">
+        <div class="print-category-title" style="background:${color.bg};color:${color.text};">${LABELS[category]}</div>
+        <div class="print-no-items">No ${LABELS[category].toLowerCase()}</div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="print-category">
+      <div class="print-category-title" style="background:${color.bg};color:${color.text};">${LABELS[category]}</div>
+      <div class="print-item-list">
+        ${safeItems
+          .map(
+            (item) => `
+              <div class="print-item">
+                <span class="print-checkbox"></span>
+                <span class="print-qty">${item.qty}</span>
+                <span class="print-name">${escapeHtml(item.name)}</span>
+              </div>
+            `
+          )
+          .join('')}
+      </div>
+    </div>
+  `;
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
 }
 
 export default function Home() {
@@ -152,75 +303,93 @@ export default function Home() {
   const [error, setError] = useState('');
   const [orders, setOrders] = useState(null);
 
-  const fileCount = Object.keys(files).length;
+  const loadedCount = Object.keys(files).length;
 
   function handleFile(slot, file) {
-    setFiles((prev) => ({ ...prev, [slot]: file }));
-    setSlotStates((prev) => ({ ...prev, [slot]: 'loaded' }));
+    setFiles((previous) => ({
+      ...previous,
+      [slot]: file,
+    }));
+
+    setSlotStates((previous) => ({
+      ...previous,
+      [slot]: 'loaded',
+    }));
   }
 
   function removeFile(slot) {
-    setFiles((prev) => {
-      const n = { ...prev };
-      delete n[slot];
-      return n;
+    setFiles((previous) => {
+      const next = { ...previous };
+      delete next[slot];
+      return next;
     });
 
-    setSlotStates((prev) => {
-      const n = { ...prev };
-      delete n[slot];
-      return n;
+    setSlotStates((previous) => {
+      const next = { ...previous };
+      delete next[slot];
+      return next;
     });
   }
 
   async function handleGenerate() {
-    if (!fileCount) return;
+    if (!loadedCount) return;
 
     setLoading(true);
     setError('');
     setOrders(null);
 
-    const fd = new FormData();
     const loadedSlots = Object.keys(files);
 
-    const processing = {};
-    loadedSlots.forEach((s) => (processing[s] = 'processing'));
-    setSlotStates(processing);
+    const processingStates = {};
+    loadedSlots.forEach((slot) => {
+      processingStates[slot] = 'processing';
+    });
+    setSlotStates(processingStates);
 
-    loadedSlots.forEach((slot) => fd.append(slot, files[slot]));
+    const formData = new FormData();
+
+    loadedSlots.forEach((slot) => {
+      formData.append(slot, files[slot]);
+    });
 
     try {
-      setProgress(`Reading ${fileCount} report${fileCount !== 1 ? 's' : ''} with AI…`);
-      setProgressPct(30);
+      setProgress(`Reading ${loadedCount} report${loadedCount !== 1 ? 's' : ''}…`);
+      setProgressPct(25);
 
-      const res = await fetch('/api/generate', {
+      const response = await fetch('/api/generate', {
         method: 'POST',
-        body: fd,
+        body: formData,
       });
 
-      setProgressPct(80);
       setProgress('Building packing sheet…');
+      setProgressPct(75);
 
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error || 'Something went wrong.');
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Something went wrong.');
       }
 
-      const data = await res.json();
+      const data = await response.json();
 
-      const done = {};
-      loadedSlots.forEach((s) => (done[s] = 'done'));
-      setSlotStates(done);
+      const doneStates = {};
+      loadedSlots.forEach((slot) => {
+        doneStates[slot] = 'done';
+      });
+      setSlotStates(doneStates);
+
       setProgressPct(100);
 
-      await new Promise((r) => setTimeout(r, 400));
-      setOrders(data.orders || []);
-    } catch (err) {
-      setError(err.message);
+      await new Promise((resolve) => setTimeout(resolve, 350));
 
-      const loaded = {};
-      loadedSlots.forEach((s) => (loaded[s] = 'loaded'));
-      setSlotStates(loaded);
+      setOrders(Array.isArray(data.orders) ? data.orders : []);
+    } catch (err) {
+      setError(err.message || 'Something went wrong.');
+
+      const loadedStates = {};
+      loadedSlots.forEach((slot) => {
+        loadedStates[slot] = 'loaded';
+      });
+      setSlotStates(loadedStates);
     } finally {
       setLoading(false);
       setProgress('');
@@ -233,131 +402,334 @@ export default function Home() {
     setSlotStates({});
     setOrders(null);
     setError('');
+    setProgress('');
+    setProgressPct(0);
   }
 
   function handleDownload() {
-    const dateStr = today();
+    if (!orders) return;
 
-    const cards = orders
+    const orderCards = orders
+      .filter(orderHasAnyItems)
       .map((order) => {
-        const cats = CATEGORY_ORDER.filter((cat) => order.categories[cat]?.length > 0);
+        return `
+          <div class="print-order-card">
+            <div class="print-order-header">
+              <div>
+                <div class="print-customer">${escapeHtml(order.customer_name || 'Unknown customer')}</div>
+                <div class="print-order-meta">
+                  Order #${escapeHtml(order.order_number)}
+                  ${order.company ? ` · ${escapeHtml(order.company)}` : ''}
+                </div>
+              </div>
+              <div class="print-window">${escapeHtml(order.time || 'No delivery window')}</div>
+            </div>
 
-        return `<div style="border:1px solid #ddd;border-radius:10px;overflow:hidden;margin-bottom:10px;page-break-inside:avoid">
-        <div style="display:flex;justify-content:space-between;align-items:center;background:#f8f8f6;padding:9px 14px;border-bottom:1px solid #eee">
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="font-family:monospace;font-size:11px;background:#eee;padding:2px 7px;border-radius:4px;color:#666">#${order.order_number}</span>
-            <span style="font-size:14px;font-weight:700">${order.customer_name}</span>
+            <div class="print-order-body">
+              ${CATEGORY_ORDER.map((category) => PrintableCategoryHtml(category, order.categories?.[category])).join('')}
+            </div>
           </div>
-          <span style="font-size:13px;font-weight:700;color:${order.time ? '#1a1a1a' : '#aaa'}">${order.time || '—'}</span>
-        </div>
-        <div style="padding:10px 14px;display:flex;flex-direction:column;gap:7px">
-          ${cats
-            .map((cat) => {
-              const s = PRINT_STYLES[cat];
-
-              return `<div style="display:flex;gap:10px;align-items:flex-start">
-              <span style="background:${s.bg};color:${s.color};font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:3px 9px;border-radius:4px;white-space:nowrap;margin-top:2px;flex-shrink:0">${LABELS[cat]}</span>
-              <div style="display:flex;flex-wrap:wrap;gap:5px">${order.categories[cat]
-                .map(
-                  (i) =>
-                    `<span style="display:inline-flex;align-items:center;gap:5px;background:#f5f5f3;border:1px solid #e5e5e0;border-radius:6px;padding:3px 10px;font-size:12px"><b style="font-family:monospace">${i.qty}</b> <span style="color:#666">${i.name}</span></span>`
-                )
-                .join('')}</div>
-            </div>`;
-            })
-            .join('')}
-        </div>
-      </div>`;
+        `;
       })
       .join('');
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Ops Packing Sheet</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:24px;color:#111}h1{font-size:18px;font-weight:700;margin-bottom:4px}.meta{font-size:12px;color:#888;margin-bottom:20px}@media print{@page{margin:1.5cm}}</style>
-</head><body><h1>Ops bag packing sheet</h1><div class="meta">${dateStr} · ${orders.length} orders</div>${cards}</body></html>`;
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Ops Bag Packing Sheet</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      color: #111;
+      background: #fff;
+      padding: 22px;
+    }
+
+    .print-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 3px solid #111;
+      padding-bottom: 12px;
+      margin-bottom: 18px;
+    }
+
+    .print-logo {
+      border: 3px solid #111;
+      padding: 6px 14px 4px;
+      display: inline-block;
+      font-weight: 900;
+      font-style: italic;
+      font-size: 22px;
+      letter-spacing: 1px;
+    }
+
+    .print-logo-sub {
+      font-size: 7px;
+      letter-spacing: 1px;
+      text-align: center;
+      margin-top: 1px;
+    }
+
+    .print-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .print-title {
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .print-subtitle {
+      font-size: 11px;
+      color: #555;
+      letter-spacing: 1.5px;
+      margin-top: 2px;
+      text-transform: uppercase;
+    }
+
+    .print-date {
+      font-size: 12px;
+      color: #444;
+      text-align: right;
+    }
+
+    .print-summary {
+      font-size: 12px;
+      color: #555;
+      margin-bottom: 14px;
+    }
+
+    .print-order-card {
+      border: 1.5px solid #222;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 12px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    .print-order-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      background: #f1f1ef;
+      border-bottom: 1px solid #ccc;
+      padding: 10px 12px;
+    }
+
+    .print-customer {
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .print-order-meta {
+      font-size: 11px;
+      color: #555;
+      margin-top: 2px;
+    }
+
+    .print-window {
+      font-size: 13px;
+      font-weight: 800;
+      white-space: nowrap;
+      border: 1px solid #222;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: #fff;
+    }
+
+    .print-order-body {
+      padding: 10px 12px;
+    }
+
+    .print-category {
+      margin-bottom: 8px;
+      display: grid;
+      grid-template-columns: 130px 1fr;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .print-category-title {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 4px 7px;
+      border-radius: 4px;
+      text-align: center;
+    }
+
+    .print-item-list {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .print-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      line-height: 1.25;
+    }
+
+    .print-checkbox {
+      width: 13px;
+      height: 13px;
+      border: 1.7px solid #111;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    .print-qty {
+      font-weight: 900;
+      min-width: 26px;
+      font-family: monospace;
+      font-size: 13px;
+    }
+
+    .print-name {
+      color: #111;
+    }
+
+    .print-no-items {
+      font-size: 11px;
+      color: #777;
+      font-style: italic;
+      padding-top: 3px;
+    }
+
+    @media print {
+      @page {
+        margin: 1.2cm;
+      }
+
+      body {
+        padding: 0;
+      }
+
+      .print-order-card {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="print-top">
+    <div class="print-title-wrap">
+      <div>
+        <div class="print-logo">BI-RITE</div>
+        <div class="print-logo-sub">EAT GOOD FOOD</div>
+      </div>
+      <div>
+        <div class="print-title">Ops Bag Packing Sheet</div>
+        <div class="print-subtitle">Operations Tool</div>
+      </div>
+    </div>
+    <div class="print-date">${escapeHtml(today())}</div>
+  </div>
+
+  <div class="print-summary">
+    ${orders.length} order${orders.length !== 1 ? 's' : ''} · Sorted by delivery window · Items grouped by source report
+  </div>
+
+  ${orderCards}
+</body>
+</html>`;
 
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const anchor = document.createElement('a');
 
-    a.href = url;
-    a.download = `ops-packing-sheet-${new Date().toISOString().slice(0, 10)}.html`;
-    a.click();
+    anchor.href = url;
+    anchor.download = `ops-packing-sheet-${downloadDateName()}.html`;
+    anchor.click();
 
     URL.revokeObjectURL(url);
   }
 
   if (orders) {
+    const safeOrders = orders.filter(orderHasAnyItems);
+
     return (
       <>
         <style>{globalStyles}</style>
 
-        <main style={{ minHeight: '100vh', background: '#08131a', fontFamily: "'DM Sans', sans-serif" }}>
+        <main style={styles.page}>
           <Header date={today()} />
 
-          <div style={{ maxWidth: 860, margin: '0 auto', padding: '36px 24px 60px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+          <section style={styles.resultsWrap}>
+            <div style={styles.resultsHeader}>
               <div>
-                <h2 style={{ fontSize: 20, fontWeight: 700, color: '#e8f4f0' }}>Packing Sheet</h2>
-                <div style={{ fontSize: 13, color: '#6a8a9a', marginTop: 4 }}>
-                  {today()} · {orders.length} orders · sorted by delivery window
+                <div style={styles.resultsEyebrow}>Generated Packing Sheet</div>
+                <h1 style={styles.resultsTitle}>Ops Bag Packing Sheet</h1>
+                <div style={styles.resultsMeta}>
+                  {today()} · {safeOrders.length} order{safeOrders.length !== 1 ? 's' : ''} · Sorted by delivery window
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button onClick={handleDownload} style={styles.btnOut}>
+              <div style={styles.resultsActions}>
+                <button style={styles.secondaryButton} onClick={handleDownload}>
                   ⬇ Download
                 </button>
-                <button onClick={() => window.print()} style={styles.btnOut}>
+                <button style={styles.secondaryButton} onClick={() => window.print()}>
                   🖨 Print
                 </button>
-                <button onClick={handleReset} style={{ ...styles.btnOut, ...styles.btnAccent }}>
-                  ← New reports
+                <button style={styles.primarySmallButton} onClick={handleReset}>
+                  ← New Reports
                 </button>
               </div>
             </div>
 
-            <div className="order-cards">
-              {orders.map((order, idx) => {
-                const cats = CATEGORY_ORDER.filter((cat) => order.categories[cat]?.length > 0);
+            <div style={styles.accuracyNote}>
+              Delivery Log is used only for delivery windows. Items stay grouped under the report they came from.
+            </div>
 
-                return (
-                  <div key={order.order_number} className="order-card" style={{ animationDelay: `${idx * 70}ms` }}>
-                    <div style={styles.orderHeader}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={styles.orderNum}>#{order.order_number}</span>
-                        <span style={styles.orderName}>{order.customer_name}</span>
+            <div style={styles.orderList}>
+              {safeOrders.map((order, index) => (
+                <div key={`${order.order_number}-${index}`} className="order-card" style={styles.orderCard}>
+                  <div style={styles.orderCardHeader}>
+                    <div>
+                      <div style={styles.orderCustomer}>{order.customer_name || 'Unknown customer'}</div>
+                      <div style={styles.orderMeta}>
+                        Order #{order.order_number}
+                        {order.company ? ` · ${order.company}` : ''}
                       </div>
-
-                      <span style={{ fontSize: 13, fontWeight: 600, color: order.time ? '#4EA99B' : '#3a5a6a' }}>
-                        {order.time || '—'}
-                      </span>
                     </div>
 
-                    <div style={styles.orderBody}>
-                      {cats.map((cat) => {
-                        const s = DARK_STYLES[cat];
-
-                        return (
-                          <div key={cat} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                            <span style={{ ...styles.catBadge, background: s.bg, color: s.color }}>{LABELS[cat]}</span>
-
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                              {order.categories[cat].map((item, i) => (
-                                <div key={i} style={styles.itemPill}>
-                                  <span style={styles.itemQty}>{item.qty}</span>
-                                  <span style={styles.itemName}>{item.name}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <div style={styles.deliveryWindow}>
+                      {order.time || 'No delivery window'}
                     </div>
                   </div>
-                );
-              })}
+
+                  <div style={styles.orderCardBody}>
+                    {CATEGORY_ORDER.map((category) => (
+                      <CategorySection
+                        key={category}
+                        category={category}
+                        items={order.categories?.[category] || []}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
+          </section>
+
+          <Footer />
         </main>
       </>
     );
@@ -367,13 +739,13 @@ export default function Home() {
     <>
       <style>{globalStyles}</style>
 
-      <main style={{ minHeight: '100vh', background: '#08131a', fontFamily: "'DM Sans', sans-serif" }}>
+      <main style={styles.page}>
         <Header date={today()} />
 
-        <div style={{ maxWidth: 860, margin: '0 auto', padding: '36px 24px 60px' }}>
-          <div style={styles.stepLabel}>Step 1 — Upload your reports, including the delivery log</div>
+        <section style={styles.uploadWrap}>
+          <div style={styles.sectionEyebrow}>Step 1 — Upload your reports</div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10, marginBottom: 28 }}>
+          <div style={styles.uploadGrid}>
             {SLOTS.map((slot) => (
               <DropSlot
                 key={slot}
@@ -386,26 +758,21 @@ export default function Home() {
             ))}
           </div>
 
-          <div style={styles.divider} />
+          <div style={styles.helperBox}>
+            <b>Accuracy rule:</b> Delivery Log is only used for delivery windows. Items are pulled only from their matching report.
+          </div>
 
-          <div style={styles.stepLabel}>Step 2 — Generate</div>
+          <div style={styles.sectionEyebrow}>Step 2 — Generate</div>
 
           {loading && (
-            <div style={styles.progressRow}>
-              <div style={styles.progressDot} />
+            <div style={styles.progressBox}>
+              <div style={styles.progressTop}>
+                <span>{progress}</span>
+                <span>{progressPct}%</span>
+              </div>
 
-              <div style={{ fontSize: 13, color: '#4EA99B', fontWeight: 500 }}>{progress}</div>
-
-              <div style={{ flex: 1, height: 3, background: '#1e3545', borderRadius: 2, overflow: 'hidden' }}>
-                <div
-                  style={{
-                    height: '100%',
-                    background: 'linear-gradient(90deg,#1B6B5A,#4EA99B)',
-                    width: progressPct + '%',
-                    transition: 'width 0.4s ease',
-                    borderRadius: 2,
-                  }}
-                />
+              <div style={styles.progressTrack}>
+                <div style={{ ...styles.progressFill, width: `${progressPct}%` }} />
               </div>
             </div>
           )}
@@ -413,84 +780,62 @@ export default function Home() {
           {error && <div style={styles.errorBox}>{error}</div>}
 
           <button
-            onClick={handleGenerate}
-            disabled={!fileCount || loading}
             style={{
-              ...styles.generateBtn,
-              ...(!fileCount || loading ? styles.generateBtnDisabled : {}),
+              ...styles.generateButton,
+              ...(!loadedCount || loading ? styles.generateButtonDisabled : {}),
             }}
+            disabled={!loadedCount || loading}
+            onClick={handleGenerate}
           >
             {loading
               ? 'Processing reports…'
-              : `Generate packing sheet${fileCount ? ` — ${fileCount} report${fileCount !== 1 ? 's' : ''} loaded` : ''}`}
+              : loadedCount
+                ? `⬇ Generate Packing Sheet — ${loadedCount} report${loadedCount !== 1 ? 's' : ''} loaded`
+                : 'Generate Packing Sheet'}
           </button>
-        </div>
+        </section>
+
+        <Footer />
       </main>
     </>
   );
 }
 
-function Header({ date }) {
+function Footer() {
   return (
-    <header style={styles.header}>
-      <div>
-        <div style={{ color: '#fff', fontSize: 17, fontWeight: 700, letterSpacing: '0.01em' }}>Ops Bag Packing Tool</div>
-        <div
-          style={{
-            color: 'rgba(255,255,255,0.45)',
-            fontSize: 10,
-            letterSpacing: '0.18em',
-            textTransform: 'uppercase',
-            marginTop: 2,
-          }}
-        >
-          Operations · Bi-Rite
-        </div>
-      </div>
-
-      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>{date}</div>
-    </header>
+    <footer style={styles.footer}>
+      POWERED BY BI-RITE OPERATIONS · DESIGNED & CREATED BY GRIFFIN LAU
+    </footer>
   );
 }
 
 const globalStyles = `
-  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
 
   * {
     box-sizing: border-box;
-    margin: 0;
-    padding: 0;
   }
 
   body {
-    background: #08131a;
+    margin: 0;
+    background: #06151b;
   }
 
-  input,
-  select,
   button,
-  textarea {
+  input {
     font-family: 'DM Sans', sans-serif;
   }
 
   .order-card {
-    background: #0f1e28;
-    border: 1px solid #1e3545;
-    border-radius: 12px;
-    overflow: hidden;
-    margin-bottom: 10px;
-    opacity: 0;
-    transform: translateY(14px);
-    animation: slideUp 0.4s ease forwards;
-    transition: box-shadow 0.2s, border-color 0.2s;
+    animation: fadeUp 0.22s ease-out both;
   }
 
-  .order-card:hover {
-    box-shadow: 0 4px 20px rgba(0,0,0,0.35);
-    border-color: #2a4a5a;
-  }
+  @keyframes fadeUp {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
 
-  @keyframes slideUp {
     to {
       opacity: 1;
       transform: translateY(0);
@@ -499,250 +844,492 @@ const globalStyles = `
 
   @media print {
     header,
-    button {
+    footer,
+    button,
+    .no-print {
       display: none !important;
     }
 
     body,
     main {
-      background: #fff !important;
-    }
-
-    .order-card {
-      background: #fff !important;
-      border-color: #ddd !important;
-      opacity: 1 !important;
-      transform: none !important;
-      animation: none !important;
+      background: white !important;
     }
   }
 `;
 
 const styles = {
+  page: {
+    minHeight: '100vh',
+    background: '#06151b',
+    color: '#eaf7f4',
+    fontFamily: "'DM Sans', sans-serif",
+  },
   header: {
-    background: 'linear-gradient(135deg, #0a2e26 0%, #0f3d30 50%, #113d32 100%)',
-    borderBottom: '1px solid rgba(78,169,155,0.2)',
-    padding: '0 32px',
-    height: 72,
+    background: 'linear-gradient(90deg, #045b49 0%, #087c69 58%, #0a7d6c 100%)',
+    borderBottom: '1px solid rgba(255,255,255,0.14)',
+  },
+  headerInner: {
+    maxWidth: 980,
+    margin: '0 auto',
+    minHeight: 88,
+    padding: '16px 24px',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 18,
+    position: 'relative',
+  },
+  logoBox: {
+    background: '#fff',
+    border: '5px solid #050505',
+    color: '#111',
+    padding: '7px 15px 5px',
+    boxShadow: '0 2px 10px rgba(0,0,0,0.25)',
+  },
+  logoText: {
+    fontSize: 24,
+    fontWeight: 900,
+    fontStyle: 'italic',
+    letterSpacing: 1.2,
+    lineHeight: 1,
+  },
+  logoSubText: {
+    fontSize: 7,
+    fontWeight: 800,
+    letterSpacing: 1,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  headerDivider: {
+    width: 1,
+    height: 46,
+    background: 'rgba(255,255,255,0.22)',
+  },
+  appTitle: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: 800,
+    letterSpacing: 0.2,
+  },
+  appSubtitle: {
+    marginTop: 3,
+    color: 'rgba(255,255,255,0.58)',
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: 2.2,
+  },
+  headerDate: {
+    marginLeft: 'auto',
+    color: 'rgba(255,255,255,0.62)',
+    fontSize: 13,
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+  },
+  stepBar: {
+    background: '#08202a',
+    borderBottom: '1px solid #123746',
+  },
+  stepInner: {
+    maxWidth: 980,
+    margin: '0 auto',
+    height: 60,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    padding: '0 24px',
+  },
+  stepItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 9,
+  },
+  stepCircle: {
+    width: 27,
+    height: 27,
+    borderRadius: '50%',
+    background: '#123746',
+    color: '#527281',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: 800,
+    fontSize: 12,
+  },
+  stepCircleActive: {
+    background: '#3fc1b4',
+    color: '#ffffff',
   },
   stepLabel: {
-    fontSize: 10,
-    fontWeight: 700,
-    letterSpacing: '0.18em',
+    color: '#486b79',
+    fontSize: 13,
+    fontWeight: 800,
+  },
+  stepLabelActive: {
+    color: '#37cfc0',
+  },
+  stepLine: {
+    width: 48,
+    height: 1,
+    background: '#1b3f4d',
+  },
+  uploadWrap: {
+    maxWidth: 980,
+    margin: '0 auto',
+    padding: '36px 24px 28px',
+  },
+  sectionEyebrow: {
+    color: '#2fd3c5',
+    fontSize: 12,
     textTransform: 'uppercase',
-    color: '#4EA99B',
+    letterSpacing: 2.6,
+    fontWeight: 900,
     marginBottom: 14,
   },
-  slotLabel: {
-    fontSize: 10,
-    fontWeight: 700,
-    letterSpacing: '0.14em',
-    textTransform: 'uppercase',
-    color: '#6a8a9a',
-    textAlign: 'center',
-    marginBottom: 8,
+  uploadGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: 18,
+    marginBottom: 24,
   },
-  dropTarget: {
-    border: '1.5px dashed #2a4a5a',
-    borderRadius: 10,
-    padding: '20px 10px',
-    textAlign: 'center',
+  slotTitle: {
+    color: '#8fbac8',
+    fontSize: 11,
+    fontWeight: 900,
+    textTransform: 'uppercase',
+    letterSpacing: 1.8,
+    marginBottom: 7,
+  },
+  dropBox: {
+    minHeight: 128,
+    border: '1.5px dashed #1f6070',
+    borderRadius: 9,
+    background: '#08222d',
     cursor: 'pointer',
-    background: '#0f1e28',
-    minHeight: 110,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    transition: 'all 0.2s',
+    gap: 7,
+    padding: 15,
+    transition: 'all 0.16s ease',
   },
-  dropTargetDrag: {
-    borderColor: '#4EA99B',
-    borderStyle: 'solid',
-    background: 'rgba(78,169,155,0.08)',
+  dropBoxDragging: {
+    borderColor: '#3fc1b4',
+    background: '#0a2e34',
     transform: 'translateY(-2px)',
   },
-  dropTargetLoaded: {
-    borderColor: '#4EA99B',
-    borderStyle: 'solid',
-    background: '#0a1f1a',
+  dropBoxLoaded: {
+    borderColor: '#3fc1b4',
+    background: '#082821',
   },
-  dropTargetProcessing: {
-    borderColor: '#4EA99B',
-    borderStyle: 'solid',
-    background: '#0a1f1a',
-    animation: 'none',
+  dropBoxProcessing: {
+    borderColor: '#3fc1b4',
+    background: '#0a2e34',
   },
-  dropTargetDone: {
-    borderColor: '#1B6B5A',
-    borderStyle: 'solid',
-    background: '#081a14',
+  dropBoxDone: {
+    borderColor: '#4dcfbf',
+    background: '#07231f',
   },
-  slotHint: {
-    fontSize: 11,
-    color: '#3a5a6a',
-    lineHeight: 1.4,
+  dropIcon: {
+    fontSize: 28,
+    lineHeight: 1,
   },
-  fileLoadedInner: {
+  dropMainText: {
+    color: '#5b93a4',
+    fontSize: 13,
+    fontWeight: 700,
+  },
+  dropSubText: {
+    color: '#2d6d80',
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 1.35,
+  },
+  loadedWrap: {
+    width: '100%',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 6,
-    width: '100%',
+    gap: 7,
   },
-  fileCheck: {
+  loadedCheck: {
     width: 28,
     height: 28,
     borderRadius: '50%',
-    background: '#4EA99B',
+    background: '#38b7a9',
+    color: '#fff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 13,
-    color: '#fff',
-    fontWeight: 700,
-    flexShrink: 0,
+    fontWeight: 900,
   },
-  fileLoadedName: {
-    fontSize: 10,
-    color: '#4EA99B',
-    wordBreak: 'break-all',
+  loadedName: {
+    color: '#c9fff6',
+    fontSize: 12,
+    fontWeight: 800,
     textAlign: 'center',
-    lineHeight: 1.3,
-    fontWeight: 500,
+    wordBreak: 'break-word',
   },
-  fileRemove: {
-    fontSize: 10,
-    color: '#3a5a6a',
-    background: 'none',
-    border: '1px solid #1e3545',
-    borderRadius: 4,
-    padding: '2px 8px',
+  removeBtn: {
+    background: 'transparent',
+    border: '1px solid #2b6978',
+    color: '#7fbecc',
+    borderRadius: 5,
+    padding: '4px 10px',
+    fontSize: 11,
+    fontWeight: 800,
     cursor: 'pointer',
   },
-  divider: {
-    height: 1,
-    background: 'linear-gradient(90deg, transparent, #1e3545, transparent)',
-    margin: '8px 0 24px',
-  },
-  progressRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-    padding: '12px 16px',
-    background: '#0f1e28',
+  helperBox: {
+    border: '1px solid #164756',
+    background: '#081e27',
+    color: '#8fbac8',
     borderRadius: 8,
-    border: '1px solid #1e3545',
+    padding: '12px 14px',
+    fontSize: 13,
+    lineHeight: 1.45,
+    margin: '6px 0 28px',
   },
-  progressDot: {
-    width: 8,
-    height: 8,
-    borderRadius: '50%',
-    background: '#4EA99B',
-    flexShrink: 0,
+  progressBox: {
+    background: '#08222d',
+    border: '1px solid #164756',
+    borderRadius: 8,
+    padding: 13,
+    marginBottom: 14,
+  },
+  progressTop: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    color: '#43cfc1',
+    fontSize: 13,
+    fontWeight: 800,
+    marginBottom: 8,
+  },
+  progressTrack: {
+    height: 5,
+    background: '#123746',
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    background: 'linear-gradient(90deg, #169d8d, #4bd0c1)',
+    transition: 'width 0.3s ease',
   },
   errorBox: {
-    background: '#1a0f0f',
-    border: '1px solid #4a1f1f',
+    border: '1px solid #7d2f2f',
+    background: '#2a1113',
+    color: '#ffabab',
     borderRadius: 8,
-    padding: '12px 16px',
-    color: '#f08080',
+    padding: 13,
     fontSize: 13,
-    marginBottom: 16,
+    fontWeight: 700,
+    marginBottom: 14,
   },
-  generateBtn: {
+  generateButton: {
     width: '100%',
-    padding: 14,
-    background: 'linear-gradient(135deg, #1B6B5A 0%, #4EA99B 100%)',
-    color: '#fff',
+    minHeight: 58,
     border: 'none',
     borderRadius: 10,
-    fontSize: 15,
-    fontWeight: 700,
+    background: 'linear-gradient(90deg, #0d9a84, #47bdb1)',
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 900,
     cursor: 'pointer',
-    letterSpacing: '0.02em',
-    boxShadow: '0 2px 16px rgba(78,169,155,0.25)',
+    boxShadow: '0 8px 26px rgba(27, 177, 158, 0.2)',
   },
-  generateBtnDisabled: {
-    background: '#152434',
-    color: '#3a5a6a',
-    boxShadow: 'none',
+  generateButtonDisabled: {
+    background: '#102d3c',
+    color: '#3e7080',
     cursor: 'not-allowed',
+    boxShadow: 'none',
   },
-  btnOut: {
-    padding: '7px 16px',
+  resultsWrap: {
+    maxWidth: 980,
+    margin: '0 auto',
+    padding: '36px 24px 28px',
+  },
+  resultsHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 18,
+    alignItems: 'flex-start',
+    marginBottom: 13,
+  },
+  resultsEyebrow: {
+    color: '#2fd3c5',
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 2.4,
+    fontWeight: 900,
+    marginBottom: 5,
+  },
+  resultsTitle: {
+    margin: 0,
+    fontSize: 25,
+    fontWeight: 900,
+    color: '#ffffff',
+  },
+  resultsMeta: {
+    marginTop: 4,
+    color: '#6f9bab',
     fontSize: 13,
-    fontWeight: 600,
-    background: 'none',
-    border: '1px solid #2a4a5a',
-    borderRadius: 8,
-    color: '#e8f4f0',
+    fontWeight: 700,
+  },
+  resultsActions: {
+    display: 'flex',
+    gap: 9,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+  },
+  secondaryButton: {
+    border: '1px solid #2b6978',
+    background: '#08222d',
+    color: '#eaf7f4',
+    borderRadius: 7,
+    padding: '9px 13px',
+    fontSize: 13,
+    fontWeight: 900,
     cursor: 'pointer',
   },
-  btnAccent: {
-    background: '#4EA99B',
-    borderColor: '#4EA99B',
-    color: '#fff',
+  primarySmallButton: {
+    border: '1px solid #3fc1b4',
+    background: '#3fc1b4',
+    color: '#062026',
+    borderRadius: 7,
+    padding: '9px 13px',
+    fontSize: 13,
+    fontWeight: 900,
+    cursor: 'pointer',
   },
-  orderHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '10px 16px',
-    background: '#152434',
-    borderBottom: '1px solid #1e3545',
+  accuracyNote: {
+    border: '1px solid #164756',
+    background: '#081e27',
+    color: '#8fbac8',
+    borderRadius: 8,
+    padding: '11px 13px',
+    fontSize: 13,
+    fontWeight: 700,
+    marginBottom: 17,
   },
-  orderNum: {
-    fontFamily: 'monospace',
-    fontSize: 11,
-    background: '#08131a',
-    color: '#6a8a9a',
-    padding: '2px 8px',
-    borderRadius: 4,
-  },
-  orderName: {
-    fontSize: 14,
-    fontWeight: 600,
-    color: '#e8f4f0',
-  },
-  orderBody: {
-    padding: '12px 16px',
+  orderList: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 8,
+    gap: 12,
   },
-  catBadge: {
-    fontSize: 10,
-    fontWeight: 700,
-    letterSpacing: '0.08em',
-    textTransform: 'uppercase',
-    padding: '3px 9px',
-    borderRadius: 4,
-    whiteSpace: 'nowrap',
-    marginTop: 2,
-    flexShrink: 0,
+  orderCard: {
+    border: '1px solid #174453',
+    background: '#081e27',
+    borderRadius: 11,
+    overflow: 'hidden',
   },
-  itemPill: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-    background: '#152434',
-    border: '1px solid #1e3545',
-    borderRadius: 6,
-    padding: '4px 10px',
+  orderCardHeader: {
+    background: '#102d3c',
+    borderBottom: '1px solid #174453',
+    padding: '13px 15px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 14,
+    alignItems: 'flex-start',
+  },
+  orderCustomer: {
+    color: '#ffffff',
+    fontSize: 17,
+    fontWeight: 900,
+  },
+  orderMeta: {
+    color: '#7ca7b5',
     fontSize: 12,
+    fontWeight: 700,
+    marginTop: 3,
+  },
+  deliveryWindow: {
+    color: '#062026',
+    background: '#46c7b9',
+    borderRadius: 6,
+    padding: '5px 9px',
+    fontSize: 13,
+    fontWeight: 900,
+    whiteSpace: 'nowrap',
+  },
+  orderCardBody: {
+    padding: 14,
+    display: 'grid',
+    gap: 10,
+  },
+  resultCategory: {
+    display: 'grid',
+    gridTemplateColumns: '150px 1fr',
+    gap: 11,
+    alignItems: 'flex-start',
+  },
+  resultCategoryTitleRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  resultCategoryBadge: {
+    fontSize: 10,
+    fontWeight: 900,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    borderRadius: 5,
+    padding: '5px 8px',
+    textAlign: 'center',
+  },
+  sourceNote: {
+    color: '#426f7d',
+    fontSize: 10,
+    fontWeight: 800,
+  },
+  resultItemList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 5,
+  },
+  resultItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    background: '#06151b',
+    border: '1px solid #123746',
+    borderRadius: 6,
+    padding: '7px 9px',
+  },
+  checkBox: {
+    width: 14,
+    height: 14,
+    border: '1.7px solid #78acba',
+    borderRadius: 2,
+    flexShrink: 0,
+    background: '#071921',
   },
   itemQty: {
-    fontWeight: 700,
-    color: '#4EA99B',
-    fontSize: 12,
+    color: '#37cfc0',
+    fontSize: 14,
+    fontWeight: 900,
+    fontFamily: 'monospace',
+    minWidth: 28,
   },
   itemName: {
-    color: '#6a8a9a',
+    color: '#d6eee9',
+    fontSize: 13,
+    fontWeight: 700,
+  },
+  noItems: {
+    color: '#557f8e',
+    fontSize: 12,
+    fontStyle: 'italic',
+    padding: '7px 0',
+  },
+  footer: {
+    maxWidth: 980,
+    margin: '0 auto',
+    padding: '24px',
+    textAlign: 'center',
+    color: '#123746',
+    fontSize: 11,
+    fontWeight: 900,
+    letterSpacing: 1.6,
   },
 };
