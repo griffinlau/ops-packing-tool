@@ -87,6 +87,27 @@ function escapeHtml(value) {
     .replaceAll("'", '&#039;');
 }
 
+function groupOrdersByWindow(orders) {
+  const safeOrders = Array.isArray(orders) ? orders.filter(orderHasAnyItems) : [];
+  const groups = [];
+
+  for (const order of safeOrders) {
+    const windowLabel = order.time || 'No delivery window';
+    const lastGroup = groups[groups.length - 1];
+
+    if (!lastGroup || lastGroup.window !== windowLabel) {
+      groups.push({
+        window: windowLabel,
+        orders: [order],
+      });
+    } else {
+      lastGroup.orders.push(order);
+    }
+  }
+
+  return groups;
+}
+
 function DropSlot({ slot, file, state, onFile, onRemove }) {
   const [dragging, setDragging] = useState(false);
 
@@ -298,31 +319,45 @@ function printableCategoryHtml(category, items) {
   `;
 }
 
+function printableOrderHtml(order) {
+  const categoryHtml = CATEGORY_ORDER.map((category) =>
+    printableCategoryHtml(category, order.categories?.[category])
+  ).join('');
+
+  return `
+    <div class="print-order-card">
+      <div class="print-order-header">
+        <div>
+          <div class="print-customer">${escapeHtml(order.customer_name || 'Unknown customer')}</div>
+          <div class="print-order-meta">
+            <span class="print-order-number">Order #${escapeHtml(order.order_number)}</span>
+            ${order.company ? `<span class="print-company"> · ${escapeHtml(order.company)}</span>` : ''}
+          </div>
+        </div>
+        <div class="print-window">${escapeHtml(order.time || 'No delivery window')}</div>
+      </div>
+
+      <div class="print-order-body">
+        ${categoryHtml}
+      </div>
+    </div>
+  `;
+}
+
 function buildPrintHtml(orders, displayDate) {
   const safeOrders = Array.isArray(orders) ? orders.filter(orderHasAnyItems) : [];
+  const groupedOrders = groupOrdersByWindow(safeOrders);
 
-  const orderCards = safeOrders
-    .map((order) => {
-      const categoryHtml = CATEGORY_ORDER.map((category) =>
-        printableCategoryHtml(category, order.categories?.[category])
-      ).join('');
-
+  const groupedHtml = groupedOrders
+    .map((group) => {
       return `
-        <div class="print-order-card">
-          <div class="print-order-header">
-            <div>
-              <div class="print-customer">${escapeHtml(order.customer_name || 'Unknown customer')}</div>
-              <div class="print-order-meta">
-                Order #${escapeHtml(order.order_number)}
-                ${order.company ? ` · ${escapeHtml(order.company)}` : ''}
-              </div>
-            </div>
-            <div class="print-window">${escapeHtml(order.time || 'No delivery window')}</div>
+        <div class="print-window-section">
+          <div class="print-window-divider">
+            <span>${escapeHtml(group.window)}</span>
+            <span>${group.orders.length} order${group.orders.length !== 1 ? 's' : ''}</span>
           </div>
 
-          <div class="print-order-body">
-            ${categoryHtml}
-          </div>
+          ${group.orders.map((order) => printableOrderHtml(order)).join('')}
         </div>
       `;
     })
@@ -408,6 +443,22 @@ function buildPrintHtml(orders, displayDate) {
       margin-bottom: 8px;
     }
 
+    .print-window-divider {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #111;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.03em;
+      padding: 4px 7px;
+      border-radius: 4px;
+      margin: 9px 0 6px;
+      page-break-after: avoid;
+      break-after: avoid;
+    }
+
     .print-order-card {
       border: 1px solid #222;
       border-radius: 5px;
@@ -436,7 +487,28 @@ function buildPrintHtml(orders, displayDate) {
     .print-order-meta {
       font-size: 9px;
       color: #555;
-      margin-top: 2px;
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      flex-wrap: wrap;
+    }
+
+    .print-order-number {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 900;
+      color: #111;
+      border: 1px solid #111;
+      border-radius: 3px;
+      padding: 1px 5px;
+      background: #fff;
+      letter-spacing: 0.02em;
+    }
+
+    .print-company {
+      color: #555;
+      font-size: 9px;
     }
 
     .print-window {
@@ -518,6 +590,11 @@ function buildPrintHtml(orders, displayDate) {
         padding: 0;
       }
 
+      .print-window-divider {
+        page-break-after: avoid;
+        break-after: avoid;
+      }
+
       .print-order-card {
         page-break-inside: avoid;
         break-inside: avoid;
@@ -544,7 +621,7 @@ function buildPrintHtml(orders, displayDate) {
     ${safeOrders.length} order${safeOrders.length !== 1 ? 's' : ''} · Sorted by delivery window · Blank categories hidden to save paper
   </div>
 
-  ${orderCards}
+  ${groupedHtml}
 </body>
 </html>`;
 }
@@ -712,6 +789,7 @@ export default function Home() {
 
   if (orders) {
     const safeOrders = orders.filter(orderHasAnyItems);
+    const groupedOrders = groupOrdersByWindow(safeOrders);
 
     return (
       <>
@@ -752,29 +830,40 @@ export default function Home() {
             </div>
 
             <div style={styles.orderList}>
-              {safeOrders.map((order, index) => (
-                <div key={`${order.order_number}-${index}`} className="order-card" style={styles.orderCard}>
-                  <div style={styles.orderCardHeader}>
-                    <div>
-                      <div style={styles.orderCustomer}>{order.customer_name || 'Unknown customer'}</div>
-                      <div style={styles.orderMeta}>
-                        Order #{order.order_number}
-                        {order.company ? ` · ${order.company}` : ''}
+              {groupedOrders.map((group) => (
+                <div key={group.window}>
+                  <div style={styles.windowDivider}>
+                    <span>{group.window}</span>
+                    <span>
+                      {group.orders.length} order{group.orders.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  {group.orders.map((order, index) => (
+                    <div key={`${order.order_number}-${index}`} className="order-card" style={styles.orderCard}>
+                      <div style={styles.orderCardHeader}>
+                        <div>
+                          <div style={styles.orderCustomer}>{order.customer_name || 'Unknown customer'}</div>
+                          <div style={styles.orderMeta}>
+                            <span style={styles.orderNumberBadge}>Order #{order.order_number}</span>
+                            {order.company ? <span style={styles.orderCompany}> · {order.company}</span> : null}
+                          </div>
+                        </div>
+
+                        <div style={styles.deliveryWindow}>{order.time || 'No delivery window'}</div>
+                      </div>
+
+                      <div style={styles.orderCardBody}>
+                        {CATEGORY_ORDER.map((category) => (
+                          <CategorySection
+                            key={category}
+                            category={category}
+                            items={order.categories?.[category] || []}
+                          />
+                        ))}
                       </div>
                     </div>
-
-                    <div style={styles.deliveryWindow}>{order.time || 'No delivery window'}</div>
-                  </div>
-
-                  <div style={styles.orderCardBody}>
-                    {CATEGORY_ORDER.map((category) => (
-                      <CategorySection
-                        key={category}
-                        category={category}
-                        items={order.categories?.[category] || []}
-                      />
-                    ))}
-                  </div>
+                  ))}
                 </div>
               ))}
             </div>
@@ -1298,13 +1387,27 @@ const styles = {
   orderList: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 12,
+    gap: 14,
+  },
+  windowDivider: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    background: '#38b7a9',
+    color: '#062026',
+    fontSize: 13,
+    fontWeight: 900,
+    letterSpacing: 0.3,
+    padding: '8px 12px',
+    borderRadius: 8,
+    margin: '10px 0 10px',
   },
   orderCard: {
     border: '1px solid #174453',
     background: '#081e27',
     borderRadius: 11,
     overflow: 'hidden',
+    marginBottom: 10,
   },
   orderCardHeader: {
     background: '#102d3c',
@@ -1324,7 +1427,26 @@ const styles = {
     color: '#7ca7b5',
     fontSize: 12,
     fontWeight: 700,
-    marginTop: 3,
+    marginTop: 6,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    flexWrap: 'wrap',
+  },
+  orderNumberBadge: {
+    display: 'inline-block',
+    background: '#eaf7f4',
+    color: '#062026',
+    borderRadius: 5,
+    padding: '2px 7px',
+    fontSize: 12,
+    fontWeight: 900,
+    letterSpacing: 0.2,
+  },
+  orderCompany: {
+    color: '#7ca7b5',
+    fontSize: 12,
+    fontWeight: 700,
   },
   deliveryWindow: {
     color: '#062026',
