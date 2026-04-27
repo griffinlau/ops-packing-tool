@@ -42,7 +42,9 @@ const CATEGORY_COLORS = {
 };
 
 function todayInputValue() {
-  return new Date().toISOString().slice(0, 10);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return tomorrow.toISOString().slice(0, 10);
 }
 
 function formatDisplayDate(dateValue) {
@@ -803,7 +805,7 @@ export default function Home() {
               style={styles.dateInput}
             />
             <div style={styles.dateHelp}>
-              This controls the date printed on the packing sheet. Set it to the report date before generating.
+              This automatically starts on the next day, but you can change it if needed before generating.
             </div>
           </div>
 
