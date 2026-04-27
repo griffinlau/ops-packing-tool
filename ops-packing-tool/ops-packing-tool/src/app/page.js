@@ -41,8 +41,17 @@ const CATEGORY_COLORS = {
   alcohol: { bg: '#FAEEDA', text: '#854F0B' },
 };
 
-function today() {
-  return new Date().toLocaleDateString('en-US', {
+function todayInputValue() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function formatDisplayDate(dateValue) {
+  if (!dateValue) return '';
+
+  const [year, month, day] = dateValue.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+
+  return date.toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -50,8 +59,8 @@ function today() {
   });
 }
 
-function downloadDateName() {
-  return new Date().toISOString().slice(0, 10);
+function downloadDateName(dateValue) {
+  return dateValue || new Date().toISOString().slice(0, 10);
 }
 
 function shortFileName(name) {
@@ -65,6 +74,15 @@ function hasItems(order, category) {
 
 function orderHasAnyItems(order) {
   return CATEGORY_ORDER.some((category) => hasItems(order, category));
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
 }
 
 function DropSlot({ slot, file, state, onFile, onRemove }) {
@@ -230,9 +248,7 @@ function CategorySection({ category, items }) {
           {LABELS[category]}
         </span>
 
-        <span style={styles.sourceNote}>
-          Source: {LABELS[category]} report
-        </span>
+        <span style={styles.sourceNote}>Source: {LABELS[category]} report</span>
       </div>
 
       {safeItems.length > 0 ? (
@@ -252,17 +268,12 @@ function CategorySection({ category, items }) {
   );
 }
 
-function PrintableCategoryHtml(category, items) {
+function printableCategoryHtml(category, items) {
   const safeItems = Array.isArray(items) ? items : [];
   const color = CATEGORY_COLORS[category];
 
   if (safeItems.length === 0) {
-    return `
-      <div class="print-category">
-        <div class="print-category-title" style="background:${color.bg};color:${color.text};">${LABELS[category]}</div>
-        <div class="print-no-items">No ${LABELS[category].toLowerCase()}</div>
-      </div>
-    `;
+    return '';
   }
 
   return `
@@ -274,7 +285,7 @@ function PrintableCategoryHtml(category, items) {
             (item) => `
               <div class="print-item">
                 <span class="print-checkbox"></span>
-                <span class="print-qty">${item.qty}</span>
+                <span class="print-qty">${escapeHtml(item.qty)}</span>
                 <span class="print-name">${escapeHtml(item.name)}</span>
               </div>
             `
@@ -285,16 +296,259 @@ function PrintableCategoryHtml(category, items) {
   `;
 }
 
-function escapeHtml(value) {
-  return String(value || '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
+function buildPrintHtml(orders, displayDate) {
+  const safeOrders = Array.isArray(orders) ? orders.filter(orderHasAnyItems) : [];
+
+  const orderCards = safeOrders
+    .map((order) => {
+      const categoryHtml = CATEGORY_ORDER.map((category) =>
+        printableCategoryHtml(category, order.categories?.[category])
+      ).join('');
+
+      return `
+        <div class="print-order-card">
+          <div class="print-order-header">
+            <div>
+              <div class="print-customer">${escapeHtml(order.customer_name || 'Unknown customer')}</div>
+              <div class="print-order-meta">
+                Order #${escapeHtml(order.order_number)}
+                ${order.company ? ` · ${escapeHtml(order.company)}` : ''}
+              </div>
+            </div>
+            <div class="print-window">${escapeHtml(order.time || 'No delivery window')}</div>
+          </div>
+
+          <div class="print-order-body">
+            ${categoryHtml}
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Ops Bag Packing Sheet</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      color: #111;
+      background: #fff;
+      padding: 14px;
+      font-size: 11px;
+    }
+
+    .print-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #111;
+      padding-bottom: 8px;
+      margin-bottom: 9px;
+    }
+
+    .print-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .print-logo {
+      border: 2px solid #111;
+      padding: 4px 10px 3px;
+      display: inline-block;
+      font-weight: 900;
+      font-style: italic;
+      font-size: 17px;
+      letter-spacing: 1px;
+      line-height: 1;
+    }
+
+    .print-logo-sub {
+      font-size: 6px;
+      letter-spacing: 0.7px;
+      text-align: center;
+      margin-top: 1px;
+    }
+
+    .print-title {
+      font-size: 17px;
+      font-weight: 900;
+      line-height: 1.1;
+    }
+
+    .print-subtitle {
+      font-size: 9px;
+      color: #555;
+      letter-spacing: 1.2px;
+      margin-top: 2px;
+      text-transform: uppercase;
+    }
+
+    .print-date {
+      font-size: 11px;
+      color: #333;
+      text-align: right;
+      font-weight: 700;
+    }
+
+    .print-summary {
+      font-size: 10px;
+      color: #555;
+      margin-bottom: 8px;
+    }
+
+    .print-order-card {
+      border: 1px solid #222;
+      border-radius: 5px;
+      overflow: hidden;
+      margin-bottom: 7px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    .print-order-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+      background: #f1f1ef;
+      border-bottom: 1px solid #bbb;
+      padding: 6px 8px;
+    }
+
+    .print-customer {
+      font-size: 13px;
+      font-weight: 900;
+      line-height: 1.1;
+    }
+
+    .print-order-meta {
+      font-size: 9px;
+      color: #555;
+      margin-top: 2px;
+    }
+
+    .print-window {
+      font-size: 10px;
+      font-weight: 900;
+      white-space: nowrap;
+      border: 1px solid #222;
+      padding: 3px 6px;
+      border-radius: 3px;
+      background: #fff;
+    }
+
+    .print-order-body {
+      padding: 6px 8px 7px;
+      display: grid;
+      gap: 4px;
+    }
+
+    .print-category {
+      display: grid;
+      grid-template-columns: 105px 1fr;
+      gap: 8px;
+      align-items: flex-start;
+    }
+
+    .print-category-title {
+      font-size: 8.5px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 3px 5px;
+      border-radius: 3px;
+      text-align: center;
+    }
+
+    .print-item-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      column-gap: 10px;
+      row-gap: 3px;
+    }
+
+    .print-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10.5px;
+      line-height: 1.2;
+      min-width: 0;
+    }
+
+    .print-checkbox {
+      width: 11px;
+      height: 11px;
+      border: 1.5px solid #111;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    .print-qty {
+      font-weight: 900;
+      min-width: 19px;
+      font-family: monospace;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
+    .print-name {
+      color: #111;
+      min-width: 0;
+    }
+
+    @media print {
+      @page {
+        margin: 0.45in;
+      }
+
+      body {
+        padding: 0;
+      }
+
+      .print-order-card {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="print-top">
+    <div class="print-title-wrap">
+      <div>
+        <div class="print-logo">BI-RITE</div>
+        <div class="print-logo-sub">EAT GOOD FOOD</div>
+      </div>
+      <div>
+        <div class="print-title">Ops Bag Packing Sheet</div>
+        <div class="print-subtitle">Operations Tool</div>
+      </div>
+    </div>
+    <div class="print-date">${escapeHtml(displayDate)}</div>
+  </div>
+
+  <div class="print-summary">
+    ${safeOrders.length} order${safeOrders.length !== 1 ? 's' : ''} · Sorted by delivery window · Blank categories hidden to save paper
+  </div>
+
+  ${orderCards}
+</body>
+</html>`;
 }
 
 export default function Home() {
+  const [selectedDate, setSelectedDate] = useState(todayInputValue());
   const [files, setFiles] = useState({});
   const [slotStates, setSlotStates] = useState({});
   const [loading, setLoading] = useState(false);
@@ -304,6 +558,7 @@ export default function Home() {
   const [orders, setOrders] = useState(null);
 
   const loadedCount = Object.keys(files).length;
+  const displayDate = formatDisplayDate(selectedDate);
 
   function handleFile(slot, file) {
     setFiles((previous) => ({
@@ -397,6 +652,19 @@ export default function Home() {
     }
   }
 
+  function handleBackToGenerator() {
+    setOrders(null);
+    setError('');
+    setProgress('');
+    setProgressPct(0);
+
+    const loadedStates = {};
+    Object.keys(files).forEach((slot) => {
+      loadedStates[slot] = 'loaded';
+    });
+    setSlotStates(loadedStates);
+  }
+
   function handleReset() {
     setFiles({});
     setSlotStates({});
@@ -409,256 +677,35 @@ export default function Home() {
   function handleDownload() {
     if (!orders) return;
 
-    const orderCards = orders
-      .filter(orderHasAnyItems)
-      .map((order) => {
-        return `
-          <div class="print-order-card">
-            <div class="print-order-header">
-              <div>
-                <div class="print-customer">${escapeHtml(order.customer_name || 'Unknown customer')}</div>
-                <div class="print-order-meta">
-                  Order #${escapeHtml(order.order_number)}
-                  ${order.company ? ` · ${escapeHtml(order.company)}` : ''}
-                </div>
-              </div>
-              <div class="print-window">${escapeHtml(order.time || 'No delivery window')}</div>
-            </div>
-
-            <div class="print-order-body">
-              ${CATEGORY_ORDER.map((category) => PrintableCategoryHtml(category, order.categories?.[category])).join('')}
-            </div>
-          </div>
-        `;
-      })
-      .join('');
-
-    const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Ops Bag Packing Sheet</title>
-  <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      font-family: Arial, Helvetica, sans-serif;
-      color: #111;
-      background: #fff;
-      padding: 22px;
-    }
-
-    .print-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 3px solid #111;
-      padding-bottom: 12px;
-      margin-bottom: 18px;
-    }
-
-    .print-logo {
-      border: 3px solid #111;
-      padding: 6px 14px 4px;
-      display: inline-block;
-      font-weight: 900;
-      font-style: italic;
-      font-size: 22px;
-      letter-spacing: 1px;
-    }
-
-    .print-logo-sub {
-      font-size: 7px;
-      letter-spacing: 1px;
-      text-align: center;
-      margin-top: 1px;
-    }
-
-    .print-title-wrap {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-
-    .print-title {
-      font-size: 20px;
-      font-weight: 800;
-    }
-
-    .print-subtitle {
-      font-size: 11px;
-      color: #555;
-      letter-spacing: 1.5px;
-      margin-top: 2px;
-      text-transform: uppercase;
-    }
-
-    .print-date {
-      font-size: 12px;
-      color: #444;
-      text-align: right;
-    }
-
-    .print-summary {
-      font-size: 12px;
-      color: #555;
-      margin-bottom: 14px;
-    }
-
-    .print-order-card {
-      border: 1.5px solid #222;
-      border-radius: 8px;
-      overflow: hidden;
-      margin-bottom: 12px;
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-
-    .print-order-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-      background: #f1f1ef;
-      border-bottom: 1px solid #ccc;
-      padding: 10px 12px;
-    }
-
-    .print-customer {
-      font-size: 16px;
-      font-weight: 800;
-    }
-
-    .print-order-meta {
-      font-size: 11px;
-      color: #555;
-      margin-top: 2px;
-    }
-
-    .print-window {
-      font-size: 13px;
-      font-weight: 800;
-      white-space: nowrap;
-      border: 1px solid #222;
-      padding: 4px 8px;
-      border-radius: 4px;
-      background: #fff;
-    }
-
-    .print-order-body {
-      padding: 10px 12px;
-    }
-
-    .print-category {
-      margin-bottom: 8px;
-      display: grid;
-      grid-template-columns: 130px 1fr;
-      gap: 10px;
-      align-items: flex-start;
-    }
-
-    .print-category-title {
-      font-size: 10px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      padding: 4px 7px;
-      border-radius: 4px;
-      text-align: center;
-    }
-
-    .print-item-list {
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-    }
-
-    .print-item {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      font-size: 12px;
-      line-height: 1.25;
-    }
-
-    .print-checkbox {
-      width: 13px;
-      height: 13px;
-      border: 1.7px solid #111;
-      display: inline-block;
-      flex-shrink: 0;
-    }
-
-    .print-qty {
-      font-weight: 900;
-      min-width: 26px;
-      font-family: monospace;
-      font-size: 13px;
-    }
-
-    .print-name {
-      color: #111;
-    }
-
-    .print-no-items {
-      font-size: 11px;
-      color: #777;
-      font-style: italic;
-      padding-top: 3px;
-    }
-
-    @media print {
-      @page {
-        margin: 1.2cm;
-      }
-
-      body {
-        padding: 0;
-      }
-
-      .print-order-card {
-        page-break-inside: avoid;
-        break-inside: avoid;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="print-top">
-    <div class="print-title-wrap">
-      <div>
-        <div class="print-logo">BI-RITE</div>
-        <div class="print-logo-sub">EAT GOOD FOOD</div>
-      </div>
-      <div>
-        <div class="print-title">Ops Bag Packing Sheet</div>
-        <div class="print-subtitle">Operations Tool</div>
-      </div>
-    </div>
-    <div class="print-date">${escapeHtml(today())}</div>
-  </div>
-
-  <div class="print-summary">
-    ${orders.length} order${orders.length !== 1 ? 's' : ''} · Sorted by delivery window · Items grouped by source report
-  </div>
-
-  ${orderCards}
-</body>
-</html>`;
+    const html = buildPrintHtml(orders, displayDate);
 
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
 
     anchor.href = url;
-    anchor.download = `ops-packing-sheet-${downloadDateName()}.html`;
+    anchor.download = `ops-packing-sheet-${downloadDateName(selectedDate)}.html`;
     anchor.click();
 
     URL.revokeObjectURL(url);
+  }
+
+  function handlePrint() {
+    if (!orders) return;
+
+    const html = buildPrintHtml(orders, displayDate);
+    const printWindow = window.open('', '_blank');
+
+    if (!printWindow) return;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+    }, 250);
   }
 
   if (orders) {
@@ -669,7 +716,7 @@ export default function Home() {
         <style>{globalStyles}</style>
 
         <main style={styles.page}>
-          <Header date={today()} />
+          <Header date={displayDate} />
 
           <section style={styles.resultsWrap}>
             <div style={styles.resultsHeader}>
@@ -677,25 +724,29 @@ export default function Home() {
                 <div style={styles.resultsEyebrow}>Generated Packing Sheet</div>
                 <h1 style={styles.resultsTitle}>Ops Bag Packing Sheet</h1>
                 <div style={styles.resultsMeta}>
-                  {today()} · {safeOrders.length} order{safeOrders.length !== 1 ? 's' : ''} · Sorted by delivery window
+                  {displayDate} · {safeOrders.length} order{safeOrders.length !== 1 ? 's' : ''} · Sorted by delivery window
                 </div>
               </div>
 
               <div style={styles.resultsActions}>
+                <button style={styles.secondaryButton} onClick={handleBackToGenerator}>
+                  ← Back to Generator
+                </button>
                 <button style={styles.secondaryButton} onClick={handleDownload}>
                   ⬇ Download
                 </button>
-                <button style={styles.secondaryButton} onClick={() => window.print()}>
+                <button style={styles.secondaryButton} onClick={handlePrint}>
                   🖨 Print
                 </button>
                 <button style={styles.primarySmallButton} onClick={handleReset}>
-                  ← New Reports
+                  New Reports
                 </button>
               </div>
             </div>
 
             <div style={styles.accuracyNote}>
               Delivery Log is used only for delivery windows. Items stay grouped under the report they came from.
+              The downloaded/printed version hides blank categories to save paper.
             </div>
 
             <div style={styles.orderList}>
@@ -710,9 +761,7 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div style={styles.deliveryWindow}>
-                      {order.time || 'No delivery window'}
-                    </div>
+                    <div style={styles.deliveryWindow}>{order.time || 'No delivery window'}</div>
                   </div>
 
                   <div style={styles.orderCardBody}>
@@ -740,10 +789,23 @@ export default function Home() {
       <style>{globalStyles}</style>
 
       <main style={styles.page}>
-        <Header date={today()} />
+        <Header date={displayDate} />
 
         <section style={styles.uploadWrap}>
           <div style={styles.sectionEyebrow}>Step 1 — Upload your reports</div>
+
+          <div style={styles.dateBox}>
+            <label style={styles.dateLabel}>Packing sheet date</label>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              style={styles.dateInput}
+            />
+            <div style={styles.dateHelp}>
+              This controls the date printed on the packing sheet. Set it to the report date before generating.
+            </div>
+          </div>
 
           <div style={styles.uploadGrid}>
             {SLOTS.map((slot) => (
@@ -839,20 +901,6 @@ const globalStyles = `
     to {
       opacity: 1;
       transform: translateY(0);
-    }
-  }
-
-  @media print {
-    header,
-    footer,
-    button,
-    .no-print {
-      display: none !important;
-    }
-
-    body,
-    main {
-      background: white !important;
     }
   }
 `;
@@ -984,6 +1032,39 @@ const styles = {
     letterSpacing: 2.6,
     fontWeight: 900,
     marginBottom: 14,
+  },
+  dateBox: {
+    border: '1px solid #164756',
+    background: '#081e27',
+    borderRadius: 8,
+    padding: '13px 14px',
+    marginBottom: 22,
+  },
+  dateLabel: {
+    display: 'block',
+    color: '#8fbac8',
+    fontSize: 11,
+    fontWeight: 900,
+    textTransform: 'uppercase',
+    letterSpacing: 1.6,
+    marginBottom: 7,
+  },
+  dateInput: {
+    width: 220,
+    maxWidth: '100%',
+    background: '#08222d',
+    border: '1px solid #1f6070',
+    color: '#eaf7f4',
+    borderRadius: 6,
+    padding: '9px 10px',
+    fontSize: 14,
+    fontWeight: 800,
+  },
+  dateHelp: {
+    marginTop: 7,
+    color: '#5b93a4',
+    fontSize: 12,
+    lineHeight: 1.4,
   },
   uploadGrid: {
     display: 'grid',
