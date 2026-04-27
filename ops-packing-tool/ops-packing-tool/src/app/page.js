@@ -448,10 +448,10 @@ function buildPrintHtml(orders, displayDate) {
       align-items: center;
       background: #111;
       color: #fff;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 900;
       letter-spacing: 0.03em;
-      padding: 4px 7px;
+      padding: 5px 8px;
       border-radius: 4px;
       margin: 9px 0 6px;
       page-break-after: avoid;
@@ -511,13 +511,17 @@ function buildPrintHtml(orders, displayDate) {
     }
 
     .print-window {
-      font-size: 10px;
+      font-size: 12px;
       font-weight: 900;
       white-space: nowrap;
-      border: 1px solid #222;
-      padding: 3px 6px;
-      border-radius: 3px;
+      border: 2px solid #111;
+      padding: 4px 8px;
+      border-radius: 4px;
       background: #fff;
+      color: #111;
+      letter-spacing: 0.02em;
+      line-height: 1;
+      display: inline-block;
     }
 
     .print-order-body {
