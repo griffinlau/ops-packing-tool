@@ -5,82 +5,6 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const OPS_REPORT_PROMPT = `You are extracting data from ONE catering operations PDF report.
-
-Return ONLY a valid JSON array.
-Do not include markdown.
-Do not include explanations.
-Do not include comments.
-
-Each JSON element must have this exact shape:
-{
-  "order_number": "string",
-  "customer_name": "string",
-  "time": "string like '8:30 AM' or null",
-  "category": "serviceware | add-ons | alcohol | beverages | coffee",
-  "items": [
-    { "name": "string", "qty": number }
-  ]
-}
-
-CRITICAL ACCURACY RULES:
-- Extract ONLY from the actual table in this PDF.
-- Do NOT use the delivery log internal ops notes.
-- Do NOT infer or guess missing items.
-- Do NOT create items from memory.
-- If you cannot confidently read an item or quantity, skip that item.
-- Use the order number as the primary key.
-- Quantities must come only from the Qty column or from the serviceware quantity columns.
-- Skip any item with blank quantity, zero quantity, or unreadable quantity.
-
-SERVICEWARE REPORT RULES:
-- If this PDF is the Serviceware report, the columns are:
-  1. Plastic Tongs
-  2. Spoon
-  3. Bamboo U-tongs
-  4. Utensil Single Pack
-- Each row is one order.
-- Only output quantities from those exact columns.
-- Category must be "serviceware".
-- Time must be null.
-- Item names must be exactly:
-  "Plastic Tongs"
-  "Spoon"
-  "Bamboo U-tongs"
-  "Utensil Single Pack"
-- Do not add serviceware items unless a positive quantity appears in that exact item's column.
-
-ADD-ONS REPORT RULES:
-- If this PDF is the Add-on report, category must be "add-ons".
-- Use the item name from the Item column.
-- If the item is "Custom Item" and there is an Item Note, include the note in the name like:
-  "Custom Item - extra menus"
-- Use Qty as the quantity.
-- Use Kitchen Time as time when shown.
-
-BEVERAGES REPORT RULES:
-- If this PDF is the Beverages report, category must be "beverages".
-- Use the item name from the Item column.
-- Include the Variant in the name when it helps identify the item.
-- Use Qty as the quantity.
-- Use Kitchen Time as time when shown.
-
-COFFEE REPORT RULES:
-- If this PDF is the Coffee report, category must be "coffee".
-- Use the item name from the Item column.
-- Include the Variant in the name when it helps identify the item, for example:
-  "Coffee To Go Box 48 servings"
-- Use Qty as the quantity.
-- Use Kitchen Time as time when shown.
-
-ALCOHOL REPORT RULES:
-- If this PDF is the Alcohol report, category must be "alcohol".
-- Use the item name from the Item column.
-- Use Qty as the quantity.
-- Use Kitchen Time as time when shown.
-
-Return ONLY the JSON array.`;
-
 const DELIVERY_LOG_PROMPT = `You are extracting schedule information from a catering delivery log PDF.
 
 Return ONLY a valid JSON array.
@@ -108,44 +32,105 @@ CRITICAL RULES:
 - Include every order that has an order number.
 - Return ONLY the JSON array.`;
 
-const SLOTS = ['serviceware', 'add-ons', 'beverages', 'coffee', 'alcohol'];
+const SERVICEWARE_PROMPT = `You are extracting data from the Serviceware PDF report.
+
+Return ONLY a valid JSON array.
+Do not include markdown.
+Do not include explanations.
+Do not include comments.
+
+Each JSON element must have this exact shape:
+{
+  "order_number": "string",
+  "customer_name": "string",
+  "time": null,
+  "items": [
+    { "name": "string", "qty": number }
+  ]
+}
+
+CRITICAL ACCURACY RULES:
+- Extract ONLY from the actual Serviceware table in this PDF.
+- Do NOT guess.
+- Do NOT infer missing items.
+- Do NOT use delivery log notes.
+- Each row is one order.
+- Use Order No as order_number.
+- Use Customer Name as customer_name.
+- Time must always be null.
+
+The serviceware columns are exactly:
+1. Plastic Tongs
+2. Spoon
+3. Bamboo U-tongs
+4. Utensil Single Pack
+
+Only output an item when that exact column has a positive quantity.
+Use these exact item names:
+- "Plastic Tongs"
+- "Spoon"
+- "Bamboo U-tongs"
+- "Utensil Single Pack"
+
+Return ONLY the JSON array.`;
+
+const GENERIC_OPS_REPORT_PROMPT = `You are extracting data from ONE catering operations production report PDF.
+
+Return ONLY a valid JSON array.
+Do not include markdown.
+Do not include explanations.
+Do not include comments.
+
+Each JSON element must have this exact shape:
+{
+  "order_number": "string",
+  "customer_name": "string",
+  "time": "string like '8:30 AM' or null",
+  "items": [
+    { "name": "string", "qty": number }
+  ]
+}
+
+CRITICAL ACCURACY RULES:
+- Extract ONLY from the actual table in this PDF.
+- Do NOT use delivery log internal ops notes.
+- Do NOT infer or guess missing items.
+- Do NOT create items from memory.
+- If you cannot confidently read an item or quantity, skip that item.
+- Use the order number as the primary key.
+- Quantities must come only from the Qty column.
+- Skip any item with blank quantity, zero quantity, or unreadable quantity.
+- Use Kitchen Time as time when shown.
+
+ITEM NAME RULES:
+- Use the item name from the Item column.
+- Include the Variant in the name when it helps identify the item.
+- Example: if Item is "Coffee To Go Box" and Variant is "48 servings", name should be "Coffee To Go Box 48 servings".
+- If the item is "Custom Item" and there is an Item Note, include the note in the name like "Custom Item - extra menus".
+
+Return ONLY the JSON array.`;
+
+const REPORT_SLOTS = [
+  { slot: 'serviceware', category: 'serviceware', prompt: SERVICEWARE_PROMPT },
+  { slot: 'add-ons', category: 'add-ons', prompt: GENERIC_OPS_REPORT_PROMPT },
+  { slot: 'beverages', category: 'beverages', prompt: GENERIC_OPS_REPORT_PROMPT },
+  { slot: 'coffee', category: 'coffee', prompt: GENERIC_OPS_REPORT_PROMPT },
+  { slot: 'alcohol', category: 'alcohol', prompt: GENERIC_OPS_REPORT_PROMPT },
+];
 
 export async function POST(req) {
   try {
     const formData = await req.formData();
 
-    const deliveryFile = formData.get('delivery-log');
-    const deliveryMap = {};
-
-    if (deliveryFile) {
-      const deliveryEntries = await extractPdfJson(deliveryFile, DELIVERY_LOG_PROMPT, 'delivery log');
-
-      for (const entry of deliveryEntries) {
-        const orderNumber = normalizeOrderNumber(entry.order_number);
-
-        if (!orderNumber) continue;
-
-        deliveryMap[orderNumber] = {
-          time: normalizeText(entry.delivery_window),
-          customer_name: normalizeText(entry.customer_name),
-          company: normalizeText(entry.company),
-        };
-      }
-    }
-
-    const results = {};
-
-    for (const slot of SLOTS) {
-      const file = formData.get(slot);
-      if (!file) continue;
-
-      const parsed = await extractPdfJson(file, OPS_REPORT_PROMPT, slot);
-      results[slot] = parsed;
-    }
-
+    const deliveryMap = await buildDeliveryMap(formData);
     const orderMap = {};
 
-    for (const [, entries] of Object.entries(results)) {
+    for (const report of REPORT_SLOTS) {
+      const file = formData.get(report.slot);
+      if (!file) continue;
+
+      const entries = await extractPdfJson(file, report.prompt, report.slot);
+
       for (const entry of entries) {
         const orderNumber = normalizeOrderNumber(entry.order_number);
         if (!orderNumber) continue;
@@ -155,10 +140,16 @@ export async function POST(req) {
         if (!orderMap[orderNumber]) {
           orderMap[orderNumber] = {
             order_number: orderNumber,
-            customer_name: deliveryInfo?.customer_name || normalizeText(entry.customer_name),
+            customer_name: deliveryInfo?.customer_name || normalizeText(entry.customer_name) || '',
             company: deliveryInfo?.company || null,
-            time: deliveryInfo?.time || normalizeText(entry.time),
-            categories: {},
+            time: deliveryInfo?.time || normalizeText(entry.time) || null,
+            categories: {
+              serviceware: [],
+              'add-ons': [],
+              beverages: [],
+              coffee: [],
+              alcohol: [],
+            },
           };
         }
 
@@ -170,29 +161,24 @@ export async function POST(req) {
 
         if (deliveryInfo?.customer_name) {
           orderMap[orderNumber].customer_name = deliveryInfo.customer_name;
+        } else if (entry.customer_name && !orderMap[orderNumber].customer_name) {
+          orderMap[orderNumber].customer_name = normalizeText(entry.customer_name);
         }
 
         if (deliveryInfo?.company) {
           orderMap[orderNumber].company = deliveryInfo.company;
         }
 
-        const category = normalizeCategory(entry.category);
-        if (!category) continue;
-
-        if (!orderMap[orderNumber].categories[category]) {
-          orderMap[orderNumber].categories[category] = [];
-        }
-
         const cleanItems = cleanItemList(entry.items);
 
         for (const item of cleanItems) {
-          addOrCombineItem(orderMap[orderNumber].categories[category], item);
+          addOrCombineItem(orderMap[orderNumber].categories[report.category], item);
         }
       }
     }
 
     const orders = Object.values(orderMap)
-      .filter((order) => Object.keys(order.categories).length > 0)
+      .filter((order) => hasAnyItems(order.categories))
       .sort((a, b) => parseTimeForSort(a.time) - parseTimeForSort(b.time));
 
     return NextResponse.json({ orders });
@@ -206,13 +192,39 @@ export async function POST(req) {
   }
 }
 
+async function buildDeliveryMap(formData) {
+  const deliveryFile = formData.get('delivery-log');
+  const deliveryMap = {};
+
+  if (!deliveryFile) return deliveryMap;
+
+  const deliveryEntries = await extractPdfJson(
+    deliveryFile,
+    DELIVERY_LOG_PROMPT,
+    'delivery log'
+  );
+
+  for (const entry of deliveryEntries) {
+    const orderNumber = normalizeOrderNumber(entry.order_number);
+    if (!orderNumber) continue;
+
+    deliveryMap[orderNumber] = {
+      time: normalizeText(entry.delivery_window),
+      customer_name: normalizeText(entry.customer_name),
+      company: normalizeText(entry.company),
+    };
+  }
+
+  return deliveryMap;
+}
+
 async function extractPdfJson(file, prompt, label) {
   const buffer = await file.arrayBuffer();
   const base64 = Buffer.from(buffer).toString('base64');
 
   const message = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 5000,
+    max_tokens: 6000,
     messages: [
       {
         role: 'user',
@@ -265,25 +277,9 @@ function normalizeOrderNumber(value) {
 function normalizeText(value) {
   if (value === null || value === undefined) return null;
 
-  const text = String(value).trim();
+  const text = String(value).replace(/\s+/g, ' ').trim();
 
   return text || null;
-}
-
-function normalizeCategory(value) {
-  if (!value) return null;
-
-  const text = String(value).trim().toLowerCase();
-
-  const allowed = ['serviceware', 'add-ons', 'alcohol', 'beverages', 'coffee'];
-
-  if (allowed.includes(text)) return text;
-
-  if (text === 'addons' || text === 'add ons' || text === 'add-on') {
-    return 'add-ons';
-  }
-
-  return null;
 }
 
 function cleanItemList(items) {
@@ -316,6 +312,10 @@ function addOrCombineItem(list, newItem) {
   } else {
     list.push({ ...newItem });
   }
+}
+
+function hasAnyItems(categories) {
+  return Object.values(categories).some((items) => Array.isArray(items) && items.length > 0);
 }
 
 function parseTimeForSort(timeValue) {
