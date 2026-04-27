@@ -3,7 +3,6 @@
 import { useState } from 'react';
 
 const SLOTS = ['delivery-log', 'serviceware', 'add-ons', 'beverages', 'coffee', 'alcohol'];
-
 const CATEGORY_ORDER = ['serviceware', 'add-ons', 'beverages', 'coffee', 'alcohol'];
 
 const LABELS = {
@@ -41,19 +40,16 @@ const CATEGORY_COLORS = {
   alcohol: { bg: '#FAEEDA', text: '#854F0B' },
 };
 
-function todayInputValue() {
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return tomorrow.toISOString().slice(0, 10);
+function todayValue() {
+  const today = new Date();
+  return today.toISOString().slice(0, 10);
 }
 
-function formatDisplayDate(dateValue) {
-  if (!dateValue) return '';
+function formatDate(value) {
+  if (!value) return '';
 
-  const [year, month, day] = dateValue.split('-').map(Number);
-  const date = new Date(year, month - 1, day);
-
-  return date.toLocaleDateString('en-US', {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -61,13 +57,18 @@ function formatDisplayDate(dateValue) {
   });
 }
 
-function downloadDateName(dateValue) {
-  return dateValue || new Date().toISOString().slice(0, 10);
+function shortName(name) {
+  if (!name) return '';
+  return name.length > 28 ? `${name.slice(0, 25)}…` : name;
 }
 
-function shortFileName(name) {
-  if (!name) return '';
-  return name.length > 28 ? name.slice(0, 25) + '…' : name;
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
 }
 
 function hasItems(order, category) {
@@ -78,30 +79,18 @@ function orderHasAnyItems(order) {
   return CATEGORY_ORDER.some((category) => hasItems(order, category));
 }
 
-function escapeHtml(value) {
-  return String(value || '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-}
-
 function groupOrdersByWindow(orders) {
-  const safeOrders = Array.isArray(orders) ? orders.filter(orderHasAnyItems) : [];
   const groups = [];
+  const safeOrders = Array.isArray(orders) ? orders.filter(orderHasAnyItems) : [];
 
   for (const order of safeOrders) {
-    const windowLabel = order.time || 'No delivery window';
-    const lastGroup = groups[groups.length - 1];
+    const window = order.time || 'No delivery window';
+    const last = groups[groups.length - 1];
 
-    if (!lastGroup || lastGroup.window !== windowLabel) {
-      groups.push({
-        window: windowLabel,
-        orders: [order],
-      });
+    if (!last || last.window !== window) {
+      groups.push({ window, orders: [order] });
     } else {
-      lastGroup.orders.push(order);
+      last.orders.push(order);
     }
   }
 
@@ -114,25 +103,18 @@ function DropSlot({ slot, file, state, onFile, onRemove }) {
   function handleDrop(e) {
     e.preventDefault();
     setDragging(false);
-
     const droppedFile = e.dataTransfer.files?.[0];
-
-    if (droppedFile && droppedFile.type === 'application/pdf') {
-      onFile(slot, droppedFile);
-    }
+    if (droppedFile && droppedFile.type === 'application/pdf') onFile(slot, droppedFile);
   }
 
   return (
     <div>
       <div style={styles.slotTitle}>{LABELS[slot]}</div>
-
       <label
         style={{
           ...styles.dropBox,
           ...(dragging ? styles.dropBoxDragging : {}),
           ...(file ? styles.dropBoxLoaded : {}),
-          ...(state === 'processing' ? styles.dropBoxProcessing : {}),
-          ...(state === 'done' ? styles.dropBoxDone : {}),
         }}
         onDragOver={(e) => {
           e.preventDefault();
@@ -147,64 +129,36 @@ function DropSlot({ slot, file, state, onFile, onRemove }) {
           style={{ display: 'none' }}
           onChange={(e) => {
             const selectedFile = e.target.files?.[0];
-
-            if (selectedFile) {
-              onFile(slot, selectedFile);
-            }
-
+            if (selectedFile) onFile(slot, selectedFile);
             e.target.value = '';
           }}
         />
 
-        {!file && (
+        {!file ? (
           <>
             <div style={styles.dropIcon}>{ICONS[slot]}</div>
             <div style={styles.dropMainText}>Click or drag & drop</div>
             <div style={styles.dropSubText}>{SLOT_HELP[slot]}</div>
           </>
-        )}
-
-        {file && state !== 'processing' && state !== 'done' && (
+        ) : (
           <div style={styles.loadedWrap}>
-            <div style={styles.loadedCheck}>✓</div>
-            <div style={styles.loadedName}>{shortFileName(file.name)}</div>
-            <button
-              type="button"
-              style={styles.removeBtn}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onRemove(slot);
-              }}
-            >
-              Remove
-            </button>
-          </div>
-        )}
-
-        {file && state === 'processing' && (
-          <div style={styles.loadedWrap}>
-            <div style={{ ...styles.loadedCheck, background: '#1b5360' }}>⏳</div>
-            <div style={styles.loadedName}>Reading report…</div>
-            <div style={styles.dropSubText}>{shortFileName(file.name)}</div>
-          </div>
-        )}
-
-        {file && state === 'done' && (
-          <div style={styles.loadedWrap}>
-            <div style={styles.loadedCheck}>✓</div>
-            <div style={styles.loadedName}>Report loaded</div>
-            <button
-              type="button"
-              style={styles.removeBtn}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onRemove(slot);
-              }}
-            >
-              Remove
-            </button>
+            <div style={styles.loadedCheck}>{state === 'processing' ? '⏳' : '✓'}</div>
+            <div style={styles.loadedName}>
+              {state === 'processing' ? 'Reading report…' : state === 'done' ? 'Report loaded' : shortName(file.name)}
+            </div>
+            {state !== 'processing' && (
+              <button
+                type="button"
+                style={styles.removeBtn}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onRemove(slot);
+                }}
+              >
+                Remove
+              </button>
+            )}
           </div>
         )}
       </label>
@@ -221,14 +175,11 @@ function Header({ date }) {
             <div style={styles.logoText}>BI-RITE</div>
             <div style={styles.logoSubText}>EAT GOOD FOOD</div>
           </div>
-
           <div style={styles.headerDivider} />
-
           <div>
             <div style={styles.appTitle}>Ops Bag Packing Tool</div>
             <div style={styles.appSubtitle}>OPERATIONS TOOL</div>
           </div>
-
           <div style={styles.headerDate}>{date}</div>
         </div>
       </header>
@@ -257,20 +208,14 @@ function Step({ number, label, active }) {
 
 function CategorySection({ category, items }) {
   const safeItems = Array.isArray(items) ? items : [];
+  const color = CATEGORY_COLORS[category];
 
   return (
     <div style={styles.resultCategory}>
       <div style={styles.resultCategoryTitleRow}>
-        <span
-          style={{
-            ...styles.resultCategoryBadge,
-            background: CATEGORY_COLORS[category].bg,
-            color: CATEGORY_COLORS[category].text,
-          }}
-        >
+        <span style={{ ...styles.resultCategoryBadge, background: color.bg, color: color.text }}>
           {LABELS[category]}
         </span>
-
         <span style={styles.sourceNote}>Source: {LABELS[category]} report</span>
       </div>
 
@@ -295,9 +240,7 @@ function printableCategoryHtml(category, items) {
   const safeItems = Array.isArray(items) ? items : [];
   const color = CATEGORY_COLORS[category];
 
-  if (safeItems.length === 0) {
-    return '';
-  }
+  if (!safeItems.length) return '';
 
   return `
     <div class="print-category">
@@ -336,10 +279,7 @@ function printableOrderHtml(order) {
         </div>
         <div class="print-window">${escapeHtml(order.time || 'No delivery window')}</div>
       </div>
-
-      <div class="print-order-body">
-        ${categoryHtml}
-      </div>
+      <div class="print-order-body">${categoryHtml}</div>
     </div>
   `;
 }
@@ -349,17 +289,14 @@ function buildPrintHtml(orders, displayDate) {
   const groupedOrders = groupOrdersByWindow(safeOrders);
 
   const groupedHtml = groupedOrders
-    .map((group) => {
-      return `
+    .map(
+      (group) => `
         <div class="print-window-section">
-          <div class="print-window-divider">
-            <span>${escapeHtml(group.window)}</span>
-          </div>
-
+          <div class="print-window-divider"><span>${escapeHtml(group.window)}</span></div>
           ${group.orders.map((order) => printableOrderHtml(order)).join('')}
         </div>
-      `;
-    })
+      `
+    )
     .join('');
 
   return `<!DOCTYPE html>
@@ -368,11 +305,7 @@ function buildPrintHtml(orders, displayDate) {
   <meta charset="utf-8">
   <title>Ops Bag Packing Sheet</title>
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: Arial, Helvetica, sans-serif;
@@ -391,11 +324,7 @@ function buildPrintHtml(orders, displayDate) {
       margin-bottom: 9px;
     }
 
-    .print-title-wrap {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
+    .print-title-wrap { display: flex; align-items: center; gap: 10px; }
 
     .print-logo {
       border: 2px solid #111;
@@ -415,11 +344,7 @@ function buildPrintHtml(orders, displayDate) {
       margin-top: 1px;
     }
 
-    .print-title {
-      font-size: 17px;
-      font-weight: 900;
-      line-height: 1.1;
-    }
+    .print-title { font-size: 17px; font-weight: 900; line-height: 1.1; }
 
     .print-subtitle {
       font-size: 9px;
@@ -429,18 +354,9 @@ function buildPrintHtml(orders, displayDate) {
       text-transform: uppercase;
     }
 
-    .print-date {
-      font-size: 11px;
-      color: #333;
-      text-align: right;
-      font-weight: 700;
-    }
+    .print-date { font-size: 11px; color: #333; text-align: right; font-weight: 700; }
 
-    .print-summary {
-      font-size: 10px;
-      color: #555;
-      margin-bottom: 8px;
-    }
+    .print-summary { font-size: 10px; color: #555; margin-bottom: 8px; }
 
     .print-window-divider {
       display: flex;
@@ -477,11 +393,7 @@ function buildPrintHtml(orders, displayDate) {
       padding: 6px 8px;
     }
 
-    .print-customer {
-      font-size: 13px;
-      font-weight: 900;
-      line-height: 1.1;
-    }
+    .print-customer { font-size: 13px; font-weight: 900; line-height: 1.1; }
 
     .print-order-meta {
       font-size: 9px;
@@ -505,10 +417,7 @@ function buildPrintHtml(orders, displayDate) {
       letter-spacing: 0.02em;
     }
 
-    .print-company {
-      color: #555;
-      font-size: 9px;
-    }
+    .print-company { color: #555; font-size: 9px; }
 
     .print-window {
       font-size: 12px;
@@ -579,29 +488,13 @@ function buildPrintHtml(orders, displayDate) {
       flex-shrink: 0;
     }
 
-    .print-name {
-      color: #111;
-      min-width: 0;
-    }
+    .print-name { color: #111; min-width: 0; }
 
     @media print {
-      @page {
-        margin: 0.45in;
-      }
-
-      body {
-        padding: 0;
-      }
-
-      .print-window-divider {
-        page-break-after: avoid;
-        break-after: avoid;
-      }
-
-      .print-order-card {
-        page-break-inside: avoid;
-        break-inside: avoid;
-      }
+      @page { margin: 0.45in; }
+      body { padding: 0; }
+      .print-window-divider { page-break-after: avoid; break-after: avoid; }
+      .print-order-card { page-break-inside: avoid; break-inside: avoid; }
     }
   </style>
 </head>
@@ -630,7 +523,7 @@ function buildPrintHtml(orders, displayDate) {
 }
 
 export default function Home() {
-  const [selectedDate, setSelectedDate] = useState(todayInputValue());
+  const [selectedDate, setSelectedDate] = useState(todayValue());
   const [files, setFiles] = useState({});
   const [slotStates, setSlotStates] = useState({});
   const [loading, setLoading] = useState(false);
@@ -640,18 +533,11 @@ export default function Home() {
   const [orders, setOrders] = useState(null);
 
   const loadedCount = Object.keys(files).length;
-  const displayDate = formatDisplayDate(selectedDate);
+  const displayDate = formatDate(selectedDate);
 
   function handleFile(slot, file) {
-    setFiles((previous) => ({
-      ...previous,
-      [slot]: file,
-    }));
-
-    setSlotStates((previous) => ({
-      ...previous,
-      [slot]: 'loaded',
-    }));
+    setFiles((previous) => ({ ...previous, [slot]: file }));
+    setSlotStates((previous) => ({ ...previous, [slot]: 'loaded' }));
   }
 
   function removeFile(slot) {
@@ -676,7 +562,6 @@ export default function Home() {
     setOrders(null);
 
     const loadedSlots = Object.keys(files);
-
     const processingStates = {};
     loadedSlots.forEach((slot) => {
       processingStates[slot] = 'processing';
@@ -684,19 +569,13 @@ export default function Home() {
     setSlotStates(processingStates);
 
     const formData = new FormData();
-
-    loadedSlots.forEach((slot) => {
-      formData.append(slot, files[slot]);
-    });
+    loadedSlots.forEach((slot) => formData.append(slot, files[slot]));
 
     try {
       setProgress(`Reading ${loadedCount} report${loadedCount !== 1 ? 's' : ''}…`);
       setProgressPct(25);
 
-      const response = await fetch('/api/generate', {
-        method: 'POST',
-        body: formData,
-      });
+      const response = await fetch('/api/generate', { method: 'POST', body: formData });
 
       setProgress('Building packing sheet…');
       setProgressPct(75);
@@ -713,11 +592,9 @@ export default function Home() {
         doneStates[slot] = 'done';
       });
       setSlotStates(doneStates);
-
       setProgressPct(100);
 
       await new Promise((resolve) => setTimeout(resolve, 350));
-
       setOrders(Array.isArray(data.orders) ? data.orders : []);
     } catch (err) {
       setError(err.message || 'Something went wrong.');
@@ -760,13 +637,12 @@ export default function Home() {
     if (!orders) return;
 
     const html = buildPrintHtml(orders, displayDate);
-
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
 
     anchor.href = url;
-    anchor.download = `ops-packing-sheet-${downloadDateName(selectedDate)}.html`;
+    anchor.download = `ops-packing-sheet-${selectedDate}.html`;
     anchor.click();
 
     URL.revokeObjectURL(url);
@@ -837,9 +713,7 @@ export default function Home() {
                 <div key={group.window}>
                   <div style={styles.windowDivider}>
                     <span>{group.window}</span>
-                    <span>
-                      {group.orders.length} order{group.orders.length !== 1 ? 's' : ''}
-                    </span>
+                    <span>{group.orders.length} order{group.orders.length !== 1 ? 's' : ''}</span>
                   </div>
 
                   {group.orders.map((order, index) => (
@@ -897,7 +771,7 @@ export default function Home() {
               style={styles.dateInput}
             />
             <div style={styles.dateHelp}>
-              This automatically starts on the next day, but you can change it if needed before generating.
+              This automatically starts on today, but you can change it if needed before generating.
             </div>
           </div>
 
@@ -968,34 +842,15 @@ function Footer() {
 const globalStyles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
 
-  * {
-    box-sizing: border-box;
-  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #06151b; }
+  button, input { font-family: 'DM Sans', sans-serif; }
 
-  body {
-    margin: 0;
-    background: #06151b;
-  }
-
-  button,
-  input {
-    font-family: 'DM Sans', sans-serif;
-  }
-
-  .order-card {
-    animation: fadeUp 0.22s ease-out both;
-  }
+  .order-card { animation: fadeUp 0.22s ease-out both; }
 
   @keyframes fadeUp {
-    from {
-      opacity: 0;
-      transform: translateY(8px);
-    }
-
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 `;
 
@@ -1196,14 +1051,6 @@ const styles = {
   dropBoxLoaded: {
     borderColor: '#3fc1b4',
     background: '#082821',
-  },
-  dropBoxProcessing: {
-    borderColor: '#3fc1b4',
-    background: '#0a2e34',
-  },
-  dropBoxDone: {
-    borderColor: '#4dcfbf',
-    background: '#07231f',
   },
   dropIcon: {
     fontSize: 28,
