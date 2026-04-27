@@ -354,7 +354,6 @@ function buildPrintHtml(orders, displayDate) {
         <div class="print-window-section">
           <div class="print-window-divider">
             <span>${escapeHtml(group.window)}</span>
-            <span>${group.orders.length} order${group.orders.length !== 1 ? 's' : ''}</span>
           </div>
 
           ${group.orders.map((order) => printableOrderHtml(order)).join('')}
@@ -445,7 +444,7 @@ function buildPrintHtml(orders, displayDate) {
 
     .print-window-divider {
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-start;
       align-items: center;
       background: #111;
       color: #fff;
