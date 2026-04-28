@@ -102,10 +102,22 @@ CRITICAL ACCURACY RULES:
 - Skip any item with blank quantity, zero quantity, or unreadable quantity.
 - Use Kitchen Time as time when shown.
 
+VERY IMPORTANT MULTI-ITEM RULES:
+- The same order number may appear multiple times in the same report under different item sections.
+- If the same order appears multiple times, extract EVERY row for that order.
+- Do NOT stop after the first item for an order.
+- Do NOT overwrite an earlier item when the same order appears again later in the report.
+- Do NOT merge different item names together.
+- Each row with a positive Qty should become an item for that order.
+- Example: if Order #79571 appears once under "Assorted Tea To-Go Box" with Qty 3 and again under "Coffee To Go Box 48 servings" with Qty 3, the output for Order #79571 must include BOTH items.
+- Example: if Order #80540 appears once under "Assorted Tea To-Go Box" with Qty 2 and again under "Coffee To Go Box 48 servings" with Qty 1, the output for Order #80540 must include BOTH items.
+
 ITEM NAME RULES:
 - Use the item name from the Item column.
 - Include the Variant in the name when it helps identify the item.
 - Example: if Item is "Coffee To Go Box" and Variant is "48 servings", name should be "Coffee To Go Box 48 servings".
+- Example: if Item is "Coffee To Go Box" and Variant is "12 servings", name should be "Coffee To Go Box 12 servings".
+- Example: if Item is "Decaf Coffee To Go Box" and Variant is "12 servings", name should be "Decaf Coffee To Go Box 12 servings".
 - If the item is "Custom Item" and there is an Item Note, include the note in the name like "Custom Item - extra menus".
 
 Return ONLY the JSON array.`;
