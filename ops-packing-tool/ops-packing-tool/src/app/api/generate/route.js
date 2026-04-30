@@ -103,14 +103,31 @@ CRITICAL ACCURACY RULES:
 - Use Kitchen Time as time when shown.
 
 VERY IMPORTANT MULTI-ITEM RULES:
+- These reports are grouped by item section.
 - The same order number may appear multiple times in the same report under different item sections.
 - If the same order appears multiple times, extract EVERY row for that order.
 - Do NOT stop after the first item for an order.
 - Do NOT overwrite an earlier item when the same order appears again later in the report.
 - Do NOT merge different item names together.
 - Each row with a positive Qty should become an item for that order.
-- Example: if Order #79571 appears once under "Assorted Tea To-Go Box" with Qty 3 and again under "Coffee To Go Box 48 servings" with Qty 3, the output for Order #79571 must include BOTH items.
-- Example: if Order #80540 appears once under "Assorted Tea To-Go Box" with Qty 2 and again under "Coffee To Go Box 48 servings" with Qty 1, the output for Order #80540 must include BOTH items.
+- If an order appears under beverage items and also later under coffee-related beverage items, include BOTH.
+- If an order appears under coffee items and also later under decaf or tea items, include ALL of them.
+- Repeated order numbers are expected and must not be treated as duplicates unless the item name is exactly the same.
+
+BEVERAGE / MILK / CREAM ACCURACY RULES:
+- The Beverages report may include regular beverages and coffee-related beverage items.
+- Coffee-related beverage items can include Clover Organic Half & Half (Pint), Califia Oat Barista Blend (Quart), or similar milk/cream items.
+- These items MUST be extracted when they appear in the Beverages report.
+- Do NOT skip Clover Organic Half & Half because the order already appeared earlier under another beverage item.
+- Do NOT skip Clover Organic Half & Half because the order also appears in the Coffee report.
+- If an order has coffee items in the Coffee report, still extract milk/cream items from the Beverages report when they are listed there.
+- Do NOT automatically invent half & half if it is not listed in the Beverages report.
+
+SPECIFIC EXAMPLES:
+- If Order #80684 Maureen Boyer appears under "Happy Moose Organic Cali Orange Juice" with Qty 1 and also later under "Clover Organic Half & Half (Pint)" with Qty 1, the output for Order #80684 must include BOTH items.
+- If Order #79571 appears once under "Assorted Tea To-Go Box" with Qty 3 and again under "Coffee To Go Box 48 servings" with Qty 3, the output for Order #79571 must include BOTH items.
+- If Order #80540 appears once under "Assorted Tea To-Go Box" with Qty 2 and again under "Coffee To Go Box 48 servings" with Qty 1, the output for Order #80540 must include BOTH items.
+- If Order #79072 appears multiple times under different beverage, milk, coffee, or tea items, include every item and quantity listed for that order.
 
 ITEM NAME RULES:
 - Use the item name from the Item column.
@@ -118,6 +135,8 @@ ITEM NAME RULES:
 - Example: if Item is "Coffee To Go Box" and Variant is "48 servings", name should be "Coffee To Go Box 48 servings".
 - Example: if Item is "Coffee To Go Box" and Variant is "12 servings", name should be "Coffee To Go Box 12 servings".
 - Example: if Item is "Decaf Coffee To Go Box" and Variant is "12 servings", name should be "Decaf Coffee To Go Box 12 servings".
+- Example: if Item is "Clover Organic Half & Half" and Variant is "(Pint)", name should be "Clover Organic Half & Half (Pint)".
+- Example: if Item is "Califia Oat Barista Blend" and Variant is "(Quart)", name should be "Califia Oat Barista Blend (Quart)".
 - If the item is "Custom Item" and there is an Item Note, include the note in the name like "Custom Item - extra menus".
 
 Return ONLY the JSON array.`;
@@ -236,7 +255,7 @@ async function extractPdfJson(file, prompt, label) {
 
   const message = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 6000,
+    max_tokens: 8000,
     messages: [
       {
         role: 'user',
