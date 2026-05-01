@@ -40,14 +40,18 @@ Do not include markdown.
 Do not include explanations.
 Do not include comments.
 
+IMPORTANT:
+For Serviceware, do NOT return item names.
+Return fixed numeric fields only.
+
 Each JSON element must have this exact shape:
 {
   "order_number": "string",
   "customer_name": "string",
-  "time": null,
-  "items": [
-    { "name": "string", "qty": number }
-  ]
+  "plastic_tongs": number,
+  "spoon": number,
+  "bamboo_u_tongs": number,
+  "utensil_single_pack": number
 }
 
 CRITICAL ACCURACY RULES:
@@ -65,7 +69,9 @@ CRITICAL ACCURACY RULES:
 - Each order number must be treated as completely separate.
 - Use Order No as order_number.
 - Use Customer Name as customer_name.
-- Time must always be null.
+- If a serviceware cell is blank, return 0 for that field.
+- If a serviceware cell has a positive number, return that exact number in the matching field.
+- If all four serviceware columns are blank for a row, return all four fields as 0.
 
 The serviceware columns are exactly, from left to right:
 1. Plastic Tongs
@@ -73,33 +79,56 @@ The serviceware columns are exactly, from left to right:
 3. Bamboo U-tongs
 4. Utensil Single Pack
 
-COLUMN RULES:
-- A number under Plastic Tongs must be output only as "Plastic Tongs".
-- A number under Spoon must be output only as "Spoon".
-- A number under Bamboo U-tongs must be output only as "Bamboo U-tongs".
-- A number under Utensil Single Pack must be output only as "Utensil Single Pack".
+FIELD MAPPING:
+- The Plastic Tongs column maps ONLY to plastic_tongs.
+- The Spoon column maps ONLY to spoon.
+- The Bamboo U-tongs column maps ONLY to bamboo_u_tongs.
+- The Utensil Single Pack column maps ONLY to utensil_single_pack.
 - Never move a number from one column to another.
-- Never treat a Bamboo U-tongs quantity as Spoon.
-- Never treat a Spoon quantity as Bamboo U-tongs.
-- If a row has blank serviceware columns, the items array must be empty.
-- Only output an item when that exact column has a positive quantity in that same row.
+- Never treat Bamboo U-tongs as Spoon.
+- Never treat Bamboo U-tongs as Utensil Single Pack.
+- Never treat Utensil Single Pack as Bamboo U-tongs.
+- Never treat Spoon as Bamboo U-tongs.
+- Never treat Spoon as Plastic Tongs.
+- Never treat Plastic Tongs as Spoon.
 
 SIMILAR NAME RULES:
 - Similar customer names must not be merged.
 - Similar order names must not be blended.
+- Same customer names on different order numbers must still be treated as separate orders.
 - "Operations SF 1" and "Operations SF 2" are separate customers.
 - Order #80624 and Order #80625 are separate orders.
 - Do NOT copy any item from #80624 to #80625.
 - Do NOT copy any item from #80625 to #80624.
-- If #80624 has a quantity and #80625 is blank, #80625 must have no serviceware items.
-- If #80624 has "3" under Bamboo U-tongs, output "3 Bamboo U-tongs" for #80624 only.
-- If #80625 has blank Plastic Tongs, blank Spoon, blank Bamboo U-tongs, and blank Utensil Single Pack, output an empty items array for #80625.
 
-Use these exact item names:
-- "Plastic Tongs"
-- "Spoon"
-- "Bamboo U-tongs"
-- "Utensil Single Pack"
+SPECIFIC KNOWN ROW EXAMPLES:
+- If Order #80427 Marianna Stark has 1 under Bamboo U-tongs and blank Utensil Single Pack, return:
+  {
+    "order_number": "80427",
+    "customer_name": "Marianna Stark",
+    "plastic_tongs": 0,
+    "spoon": 0,
+    "bamboo_u_tongs": 1,
+    "utensil_single_pack": 0
+  }
+- If Order #80624 Operations SF 1 has 3 under Bamboo U-tongs, return:
+  {
+    "order_number": "80624",
+    "customer_name": "Operations SF 1",
+    "plastic_tongs": 0,
+    "spoon": 0,
+    "bamboo_u_tongs": 3,
+    "utensil_single_pack": 0
+  }
+- If Order #80625 Operations SF 2 has blank Plastic Tongs, blank Spoon, blank Bamboo U-tongs, and blank Utensil Single Pack, return:
+  {
+    "order_number": "80625",
+    "customer_name": "Operations SF 2",
+    "plastic_tongs": 0,
+    "spoon": 0,
+    "bamboo_u_tongs": 0,
+    "utensil_single_pack": 0
+  }
 
 Return ONLY the JSON array.`;
 
@@ -235,7 +264,10 @@ export async function POST(req) {
           orderMap[orderNumber].company = deliveryInfo.company;
         }
 
-        const cleanItems = cleanItemList(entry.items);
+        const cleanItems =
+          report.category === 'serviceware'
+            ? servicewareFieldsToItems(entry)
+            : cleanItemList(entry.items);
 
         for (const item of cleanItems) {
           addOrCombineItem(orderMap[orderNumber].categories[report.category], item);
@@ -346,6 +378,42 @@ function normalizeText(value) {
   const text = String(value).replace(/\s+/g, ' ').trim();
 
   return text || null;
+}
+
+function servicewareFieldsToItems(entry) {
+  const items = [];
+
+  const plasticTongs = safePositiveNumber(entry?.plastic_tongs);
+  const spoon = safePositiveNumber(entry?.spoon);
+  const bambooUTongs = safePositiveNumber(entry?.bamboo_u_tongs);
+  const utensilSinglePack = safePositiveNumber(entry?.utensil_single_pack);
+
+  if (plasticTongs > 0) {
+    items.push({ name: 'Plastic Tongs', qty: plasticTongs });
+  }
+
+  if (spoon > 0) {
+    items.push({ name: 'Spoon', qty: spoon });
+  }
+
+  if (bambooUTongs > 0) {
+    items.push({ name: 'Bamboo U-tongs', qty: bambooUTongs });
+  }
+
+  if (utensilSinglePack > 0) {
+    items.push({ name: 'Utensil Single Pack', qty: utensilSinglePack });
+  }
+
+  return items;
+}
+
+function safePositiveNumber(value) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) return 0;
+  if (number <= 0) return 0;
+
+  return number;
 }
 
 function cleanItemList(items) {
