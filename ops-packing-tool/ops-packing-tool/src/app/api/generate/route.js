@@ -24,6 +24,7 @@ CRITICAL RULES:
 - This delivery log is ONLY for time windows and customer/order matching.
 - Do NOT extract packing items from Internal ops notes.
 - Do NOT create serviceware, coffee, beverages, alcohol, or add-on items from this report.
+- Do NOT use Internal ops notes to create item quantities.
 - The delivery window appears as a group/header row, such as "7:00 am - 7:30 am".
 - Every order listed below that window belongs to that same delivery_window until the next time window appears.
 - Use Order No. as order_number.
@@ -51,21 +52,49 @@ Each JSON element must have this exact shape:
 
 CRITICAL ACCURACY RULES:
 - Extract ONLY from the actual Serviceware table in this PDF.
+- The Serviceware report is the ONLY source for serviceware items.
 - Do NOT guess.
 - Do NOT infer missing items.
 - Do NOT use delivery log notes.
+- Do NOT use customer name similarity to copy items.
+- Do NOT copy quantities from the row above.
+- Do NOT copy quantities from the row below.
+- Do NOT carry a quantity forward from a previous row.
+- Do NOT shift a quantity left or right into the wrong column.
 - Each row is one order.
+- Each order number must be treated as completely separate.
 - Use Order No as order_number.
 - Use Customer Name as customer_name.
 - Time must always be null.
 
-The serviceware columns are exactly:
+The serviceware columns are exactly, from left to right:
 1. Plastic Tongs
 2. Spoon
 3. Bamboo U-tongs
 4. Utensil Single Pack
 
-Only output an item when that exact column has a positive quantity.
+COLUMN RULES:
+- A number under Plastic Tongs must be output only as "Plastic Tongs".
+- A number under Spoon must be output only as "Spoon".
+- A number under Bamboo U-tongs must be output only as "Bamboo U-tongs".
+- A number under Utensil Single Pack must be output only as "Utensil Single Pack".
+- Never move a number from one column to another.
+- Never treat a Bamboo U-tongs quantity as Spoon.
+- Never treat a Spoon quantity as Bamboo U-tongs.
+- If a row has blank serviceware columns, the items array must be empty.
+- Only output an item when that exact column has a positive quantity in that same row.
+
+SIMILAR NAME RULES:
+- Similar customer names must not be merged.
+- Similar order names must not be blended.
+- "Operations SF 1" and "Operations SF 2" are separate customers.
+- Order #80624 and Order #80625 are separate orders.
+- Do NOT copy any item from #80624 to #80625.
+- Do NOT copy any item from #80625 to #80624.
+- If #80624 has a quantity and #80625 is blank, #80625 must have no serviceware items.
+- If #80624 has "3" under Bamboo U-tongs, output "3 Bamboo U-tongs" for #80624 only.
+- If #80625 has blank Plastic Tongs, blank Spoon, blank Bamboo U-tongs, and blank Utensil Single Pack, output an empty items array for #80625.
+
 Use these exact item names:
 - "Plastic Tongs"
 - "Spoon"
@@ -101,6 +130,12 @@ CRITICAL ACCURACY RULES:
 - Quantities must come only from the Qty column.
 - Skip any item with blank quantity, zero quantity, or unreadable quantity.
 - Use Kitchen Time as time when shown.
+- Similar customer names must not be merged.
+- Similar order names must not be blended.
+- Each order number must be treated as completely separate.
+- Do NOT copy quantities from the row above.
+- Do NOT copy quantities from the row below.
+- Do NOT carry a quantity forward from a previous row.
 
 VERY IMPORTANT MULTI-ITEM RULES:
 - These reports are grouped by item section.
